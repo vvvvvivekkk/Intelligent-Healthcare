@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Login – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="logo">
+                <svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                <h1>MedSync AI</h1>
+                <p>Doctor Login</p>
+            </div>
+            <form id="loginForm" onsubmit="return false">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="email" placeholder="Enter your email" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" id="password" placeholder="Enter your password" required>
+                </div>
+                <div id="loginError" class="form-error mb-2 hidden"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%" id="loginBtn">Sign In</button>
+            </form>
+            <div class="auth-footer">
+                Don't have an account? <a href="/doctor/register">Register as Doctor</a>
+                <br><a href="/login" style="font-size:0.8rem;margin-top:8px;display:inline-block">← Login as Patient</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        const form = document.getElementById('loginForm');
+        const errorDiv = document.getElementById('loginError');
+        const loginBtn = document.getElementById('loginBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorDiv.classList.add('hidden');
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Signing in...';
+
+            try {
+                const result = await API.post('/api/auth/login/doctor', {
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                });
+
+                if (result.success) {
+                    window.location.href = '/doctor/dashboard';
+                } else {
+                    errorDiv.textContent = result.message;
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.classList.remove('hidden');
+            }
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+        });
+    </script>
+</body>
+</html>

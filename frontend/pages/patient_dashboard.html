@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Dashboard – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav">
+                <li><a href="/patient/dashboard" class="active">Dashboard</a></li>
+                <li><a href="/patient/chatbot">AI Chatbot</a></li>
+                <li><a href="/patient/appointments">Appointments</a></li>
+                <li><a href="/doctors/browse">Find Doctors</a></li>
+            </ul>
+            <div class="nav-user">
+                <div class="notification-badge" onclick="toggleNotifications()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                    <span class="badge-count hidden" id="notifCount">0</span>
+                </div>
+                <span class="nav-user-name" id="userName"></span>
+                <button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Notification Panel -->
+    <div class="notification-panel" id="notifPanel">
+        <div class="notif-header">
+            <h3>Notifications</h3>
+            <button class="btn btn-sm btn-secondary" onclick="markAllRead()">Mark all read</button>
+        </div>
+        <div class="notif-list" id="notifList">
+            <div class="empty-state"><p>No notifications</p></div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard">
+        <div class="container">
+            <div class="dash-header">
+                <h1>Welcome back, <span id="dashName"></span> 👋</h1>
+                <p>Your Patient ID: <strong id="dashPatientId"></strong></p>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">📅</div>
+                    <div class="stat-info">
+                        <h3 id="statUpcoming">0</h3>
+                        <p>Upcoming Appointments</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">✅</div>
+                    <div class="stat-info">
+                        <h3 id="statCompleted">0</h3>
+                        <p>Completed</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon purple">💬</div>
+                    <div class="stat-info">
+                        <h3 id="statChats">0</h3>
+                        <p>AI Consultations</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">🔔</div>
+                    <div class="stat-info">
+                        <h3 id="statNotifs">0</h3>
+                        <p>Unread Notifications</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Grid -->
+            <div class="dashboard-grid">
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">Quick Actions</div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+                        <a href="/patient/chatbot" class="btn btn-primary" style="width:100%">🤖 Start AI Consultation</a>
+                        <a href="/doctors/browse" class="btn btn-outline" style="width:100%">🔍 Browse Doctors</a>
+                        <a href="/patient/appointments" class="btn btn-secondary" style="width:100%">📋 View Appointments</a>
+                    </div>
+                </div>
+
+                <!-- Upcoming Appointments -->
+                <div class="card">
+                    <div class="card-header">
+                        Upcoming Appointments
+                        <a href="/patient/appointments" class="btn btn-sm btn-secondary">View All</a>
+                    </div>
+                    <div class="card-body">
+                        <div class="appointment-list" id="upcomingList">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Chat Sessions -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        Recent AI Consultations
+                        <a href="/patient/chatbot" class="btn btn-sm btn-primary">New Consultation</a>
+                    </div>
+                    <div class="card-body">
+                        <div id="chatSessionsList">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentUser = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await requireAuth('patient');
+            if (!currentUser) return;
+
+            document.getElementById('userName').textContent = currentUser.full_name;
+            document.getElementById('dashName').textContent = currentUser.full_name.split(' ')[0];
+            document.getElementById('dashPatientId').textContent = currentUser.patient_id;
+
+            loadDashboardData();
+            loadNotifications();
+        });
+
+        async function loadDashboardData() {
+            // Load appointments
+            try {
+                const aptResult = await API.get('/api/appointments/patient');
+                if (aptResult.success) {
+                    const apts = aptResult.data;
+                    const upcoming = apts.filter(a => a.status === 'scheduled' || a.status === 'rescheduled');
+                    const completed = apts.filter(a => a.status === 'completed');
+
+                    document.getElementById('statUpcoming').textContent = upcoming.length;
+                    document.getElementById('statCompleted').textContent = completed.length;
+
+                    const listEl = document.getElementById('upcomingList');
+                    if (upcoming.length === 0) {
+                        listEl.innerHTML = '<div class="empty-state"><p>No upcoming appointments</p><a href="/patient/chatbot" class="btn btn-sm btn-primary mt-2">Start AI Consultation</a></div>';
+                    } else {
+                        listEl.innerHTML = upcoming.slice(0, 5).map(a => renderAppointmentItem(a)).join('');
+                    }
+                }
+            } catch(e) { console.error(e); }
+
+            // Load chat sessions
+            try {
+                const chatResult = await API.get('/api/chatbot/sessions');
+                if (chatResult.success) {
+                    document.getElementById('statChats').textContent = chatResult.data.length;
+                    const sessEl = document.getElementById('chatSessionsList');
+                    if (chatResult.data.length === 0) {
+                        sessEl.innerHTML = '<div class="empty-state"><p>No consultations yet</p><a href="/patient/chatbot" class="btn btn-sm btn-primary mt-2">Start Your First Consultation</a></div>';
+                    } else {
+                        sessEl.innerHTML = '<div class="appointment-list">' +
+                            chatResult.data.slice(0, 5).map(s => `
+                                <div class="appointment-item" style="cursor:pointer" onclick="window.location.href='/patient/chatbot?session=${s.session_id}'">
+                                    <div class="apt-info">
+                                        <div class="apt-date">
+                                            <div class="day">💬</div>
+                                        </div>
+                                        <div class="apt-details">
+                                            <h4>Consultation Session</h4>
+                                            <p>${s.message_count} messages · Started ${formatDate(s.started_at)}</p>
+                                        </div>
+                                    </div>
+                                    <span class="btn btn-sm btn-outline">Continue →</span>
+                                </div>
+                            `).join('') + '</div>';
+                    }
+                }
+            } catch(e) { console.error(e); }
+
+            // Load notification count
+            try {
+                const notifResult = await API.get('/api/appointments/notifications?unread=true');
+                if (notifResult.success) {
+                    const count = notifResult.data.unread_count;
+                    document.getElementById('statNotifs').textContent = count;
+                    const badge = document.getElementById('notifCount');
+                    if (count > 0) {
+                        badge.textContent = count;
+                        badge.classList.remove('hidden');
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function renderAppointmentItem(a) {
+            const date = new Date(a.slot_date);
+            const day = date.getDate();
+            const month = date.toLocaleString('default', { month: 'short' });
+            return `
+                <div class="appointment-item">
+                    <div class="apt-info">
+                        <div class="apt-date">
+                            <div class="day">${day}</div>
+                            <div class="month">${month}</div>
+                        </div>
+                        <div class="apt-details">
+                            <h4>Dr. ${a.doctor_name}</h4>
+                            <p>${a.specialization} · ${a.start_time} - ${a.end_time}</p>
+                        </div>
+                    </div>
+                    <span class="status-badge status-${a.status}">${a.status}</span>
+                </div>
+            `;
+        }
+
+        async function loadNotifications() {
+            try {
+                const result = await API.get('/api/appointments/notifications');
+                if (result.success) {
+                    const notifs = result.data.notifications;
+                    const listEl = document.getElementById('notifList');
+                    if (notifs.length === 0) {
+                        listEl.innerHTML = '<div class="empty-state" style="padding:24px"><p>No notifications</p></div>';
+                    } else {
+                        listEl.innerHTML = notifs.map(n => `
+                            <div class="notif-item ${n.is_read ? '' : 'unread'} notif-type-${n.notification_type}"
+                                 onclick="markNotifRead(${n.id}, this)">
+                                <div class="notif-title">${n.title}</div>
+                                <div class="notif-message">${n.message}</div>
+                                <div class="notif-time">${formatDate(n.created_at)}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function toggleNotifications() {
+            document.getElementById('notifPanel').classList.toggle('open');
+        }
+
+        async function markNotifRead(id, el) {
+            await API.post(`/api/appointments/notifications/${id}/read`);
+            el.classList.remove('unread');
+        }
+
+        async function markAllRead() {
+            await API.post('/api/appointments/notifications/read-all');
+            document.querySelectorAll('.notif-item').forEach(el => el.classList.remove('unread'));
+            document.getElementById('notifCount').classList.add('hidden');
+            document.getElementById('statNotifs').textContent = '0';
+        }
+    </script>
+</body>
+</html>

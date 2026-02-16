@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedSync AI – Intelligent Healthcare Platform</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav" id="navLinks">
+                <li><a href="/login" class="btn btn-outline btn-sm">Patient Login</a></li>
+                <li><a href="/doctor/login" class="btn btn-primary btn-sm">Doctor Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="container">
+            <h1>AI-Powered <span>Healthcare</span><br>Appointment Platform</h1>
+            <p>Describe your symptoms, get AI-driven insights, find the right specialist, and book appointments — all in one seamless experience.</p>
+            <div class="hero-actions">
+                <a href="/register" class="btn btn-primary btn-lg">Get Started as Patient</a>
+                <a href="/doctor/register" class="btn btn-outline btn-lg">Register as Doctor</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+        <div class="container">
+            <h2>How MedSync AI Works</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#dbeafe;color:#2563eb">🤖</div>
+                    <h3>AI Symptom Analysis</h3>
+                    <p>Chat with our AI assistant about your symptoms and receive intelligent disease predictions with confidence levels.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#d1fae5;color:#059669">👨‍⚕️</div>
+                    <h3>Smart Doctor Matching</h3>
+                    <p>Get matched with verified specialists based on AI analysis. View profiles, ratings, and availability in real time.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#ede9fe;color:#7c3aed">📅</div>
+                    <h3>Instant Booking</h3>
+                    <p>Book appointments with available time slots directly from the chatbot. Real-time slot management prevents double booking.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#fef3c7;color:#d97706">🔒</div>
+                    <h3>OTP-Secured Consultations</h3>
+                    <p>Every consultation is protected with OTP verification ensuring patient identity and appointment security.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#fee2e2;color:#dc2626">🚨</div>
+                    <h3>Emergency Rescheduling</h3>
+                    <p>Doctors can trigger emergency cancellations with automatic patient notification and easy rescheduling workflow.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#f0f9ff;color:#0891b2">🔔</div>
+                    <h3>Smart Notifications</h3>
+                    <p>Receive timely reminders, booking confirmations, and emergency alerts to stay informed about your healthcare journey.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 MedSync AI. All rights reserved. | <a href="#">Privacy Policy</a> | <a href="#">Terms of Service</a></p>
+            <p style="margin-top:8px;font-size:0.75rem;opacity:0.7">This platform provides decision support only. Always consult a licensed medical professional.</p>
+        </div>
+    </footer>
+
+    <script src="/js/app.js"></script>
+    <script>
+        // Check if user is already logged in and redirect
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const session = await API.checkSession();
+                if (session.authenticated) {
+                    const navLinks = document.getElementById('navLinks');
+                    if (session.role === 'patient') {
+                        navLinks.innerHTML = `
+                            <li><a href="/patient/dashboard">Dashboard</a></li>
+                            <li><a href="/patient/chatbot">AI Chatbot</a></li>
+                            <li><span class="nav-user-name">Hi, ${session.full_name}</span></li>
+                            <li><button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button></li>
+                        `;
+                    } else if (session.role === 'doctor') {
+                        navLinks.innerHTML = `
+                            <li><a href="/doctor/dashboard">Dashboard</a></li>
+                            <li><span class="nav-user-name">Dr. ${session.full_name}</span></li>
+                            <li><button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button></li>
+                        `;
+                    }
+                }
+            } catch(e) {}
+        });
+    </script>
+</body>
+</html>

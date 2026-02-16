@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Dashboard – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav">
+                <li><a href="/doctor/dashboard" class="active">Dashboard</a></li>
+            </ul>
+            <div class="nav-user">
+                <span class="nav-user-name" id="userName"></span>
+                <button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard">
+        <div class="container">
+            <div class="dash-header">
+                <h1>Doctor Dashboard</h1>
+                <p id="doctorMeta"></p>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value" id="statToday">0</div><div class="stat-label">Today's Appointments</div></div>
+                <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Appointments</div></div>
+                <div class="stat-card"><div class="stat-value" id="statSlots">0</div><div class="stat-label">Active Slots</div></div>
+                <div class="stat-card"><div class="stat-value" id="statCompleted">0</div><div class="stat-label">Completed</div></div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('appointments', this)">Appointments</button>
+                <button class="tab-btn" onclick="switchTab('slots', this)">Manage Slots</button>
+                <button class="tab-btn" onclick="switchTab('profile', this)">Profile</button>
+            </div>
+
+            <!-- Appointments Tab -->
+            <div class="tab-content active" id="tab-appointments">
+                <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="margin:0">Appointments</h2>
+                    <select class="form-input" style="width:auto" id="aptFilter" onchange="renderAppointments()">
+                        <option value="all">All</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="appointment-list" id="appointmentList">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+
+            <!-- Slots Tab -->
+            <div class="tab-content" id="tab-slots" style="display:none">
+                <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="margin:0">Manage Slots</h2>
+                    <button class="btn btn-primary btn-sm" onclick="openAddSlot()">+ Add Slot</button>
+                </div>
+                <div class="form-group" style="max-width:250px;margin-bottom:16px">
+                    <input type="date" class="form-input" id="slotDateFilter" onchange="loadSlots()">
+                </div>
+                <div class="slot-grid" id="slotList" style="gap:12px">
+                    <div class="spinner" style="grid-column:1/-1"></div>
+                </div>
+            </div>
+
+            <!-- Profile Tab -->
+            <div class="tab-content" id="tab-profile" style="display:none">
+                <div class="card" style="max-width:600px;margin:0 auto;padding:32px">
+                    <h2 style="margin-top:0">Edit Profile</h2>
+                    <form id="profileForm" onsubmit="saveProfile(event)">
+                        <div class="form-group">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" class="form-input" id="profileName" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Hospital</label>
+                            <input type="text" class="form-input" id="profileHospital">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Experience (years)</label>
+                            <input type="number" class="form-input" id="profileExperience" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Bio</label>
+                            <textarea class="form-input" id="profileBio" rows="4" placeholder="Brief professional bio"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width:100%">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Slot Modal -->
+    <div class="modal-overlay hidden" id="addSlotModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Add Time Slot</h3>
+                <button class="modal-close" onclick="closeModal('addSlotModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Date</label>
+                    <input type="date" class="form-input" id="slotDate" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start Time</label>
+                    <input type="time" class="form-input" id="slotStart" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Time</label>
+                    <input type="time" class="form-input" id="slotEnd" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addSlotModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="addSlot()">Add Slot</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentUser = null;
+        let allAppointments = [];
+        let allSlots = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await requireAuth('doctor');
+            if (!currentUser) return;
+            document.getElementById('userName').textContent = currentUser.full_name;
+            document.getElementById('doctorMeta').textContent =
+                `${currentUser.specialization} · ${currentUser.hospital || ''} · ${currentUser.experience_years || 0} yrs experience`;
+
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate());
+            document.getElementById('slotDate').min = tomorrow.toISOString().split('T')[0];
+            document.getElementById('slotDateFilter').value = new Date().toISOString().split('T')[0];
+
+            if (currentUser.full_name) document.getElementById('profileName').value = currentUser.full_name;
+            if (currentUser.hospital) document.getElementById('profileHospital').value = currentUser.hospital;
+            if (currentUser.experience_years) document.getElementById('profileExperience').value = currentUser.experience_years;
+            if (currentUser.bio) document.getElementById('profileBio').value = currentUser.bio;
+
+            loadAppointments();
+            loadSlots();
+        });
+
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+            document.getElementById(`tab-${tab}`).style.display = 'block';
+        }
+
+        // --- Appointments ---
+        async function loadAppointments() {
+            try {
+                const result = await API.get('/api/appointments/doctor');
+                if (result.success) {
+                    allAppointments = result.data;
+                    updateStats();
+                    renderAppointments();
+                }
+            } catch(e) {
+                document.getElementById('appointmentList').innerHTML =
+                    '<div class="empty-state"><p>Failed to load appointments</p></div>';
+            }
+        }
+
+        function updateStats() {
+            const today = new Date().toISOString().split('T')[0];
+            const todayApts = allAppointments.filter(a => a.slot_date === today && !['cancelled','emergency_cancelled'].includes(a.status));
+            const completed = allAppointments.filter(a => a.status === 'completed');
+
+            document.getElementById('statToday').textContent = todayApts.length;
+            document.getElementById('statTotal').textContent = allAppointments.length;
+            document.getElementById('statCompleted').textContent = completed.length;
+        }
+
+        function renderAppointments() {
+            const listEl = document.getElementById('appointmentList');
+            const filter = document.getElementById('aptFilter').value;
+            let filtered = allAppointments;
+
+            if (filter === 'scheduled') {
+                filtered = filtered.filter(a => ['scheduled','rescheduled','otp_pending'].includes(a.status));
+            } else if (filter === 'completed') {
+                filtered = filtered.filter(a => a.status === 'completed');
+            } else if (filter === 'cancelled') {
+                filtered = filtered.filter(a => ['cancelled','emergency_cancelled'].includes(a.status));
+            }
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><h3>No appointments</h3></div>';
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(a => {
+                const date = new Date(a.slot_date);
+                const day = date.getDate();
+                const month = date.toLocaleString('default', { month: 'short' });
+                const isActive = ['scheduled','rescheduled'].includes(a.status);
+
+                return `
+                    <div class="appointment-item" style="flex-wrap:wrap;gap:12px">
+                        <div class="apt-info">
+                            <div class="apt-date">
+                                <div class="day">${day}</div>
+                                <div class="month">${month}</div>
+                            </div>
+                            <div class="apt-details">
+                                <h4>${a.patient_name}</h4>
+                                <p>${a.start_time} - ${a.end_time}</p>
+                                <p style="font-size:0.75rem;color:var(--text-light)">ID: ${a.appointment_id}</p>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span class="status-badge status-${a.status}">${a.status.replace('_', ' ')}</span>
+                            ${isActive ? `
+                                <button class="btn btn-sm btn-success" onclick="markCompleted(${a.id})">✓ Complete</button>
+                                <button class="btn btn-sm btn-danger" onclick="emergencyCancel(${a.id})">🚨 Emergency</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function markCompleted(aptId) {
+            try {
+                const result = await API.post(`/api/appointments/${aptId}/status`, { status: 'completed' });
+                if (result.success) {
+                    showToast('Marked as completed', 'success');
+                    loadAppointments();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to update', 'error');
+            }
+        }
+
+        async function emergencyCancel(aptId) {
+            const reason = prompt('Please provide a reason for emergency cancellation:');
+            if (!reason) return;
+
+            try {
+                const result = await API.post(`/api/appointments/${aptId}/emergency-cancel`, { reason: reason });
+                if (result.success) {
+                    showToast('Emergency cancellation processed', 'success');
+                    loadAppointments();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Cancellation failed', 'error');
+            }
+        }
+
+        // --- Slots ---
+        async function loadSlots() {
+            const date = document.getElementById('slotDateFilter').value;
+            const slotsEl = document.getElementById('slotList');
+            slotsEl.innerHTML = '<div class="spinner" style="grid-column:1/-1"></div>';
+
+            try {
+                let url = '/api/appointments/slots/doctor';
+                if (date) url += `?date=${date}`;
+                const result = await API.get(url);
+                if (result.success) {
+                    allSlots = result.data;
+                    document.getElementById('statSlots').textContent = allSlots.length;
+                    renderSlots();
+                }
+            } catch(e) {
+                slotsEl.innerHTML = '<p style="color:var(--danger);grid-column:1/-1">Failed to load slots</p>';
+            }
+        }
+
+        function renderSlots() {
+            const slotsEl = document.getElementById('slotList');
+            if (allSlots.length === 0) {
+                slotsEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><h3>No slots for this date</h3><p>Click "Add Slot" to create available time slots.</p></div>';
+                return;
+            }
+
+            slotsEl.innerHTML = allSlots.map(s => `
+                <div class="slot-item" style="cursor:default;padding:12px;position:relative;${s.is_booked ? 'opacity:0.6' : ''}">
+                    <div class="slot-time">${s.start_time}</div>
+                    <div style="font-size:0.7rem;color:var(--text-secondary)">${s.end_time}</div>
+                    <div style="font-size:0.65rem;margin-top:4px;color:${s.is_booked ? 'var(--danger)' : 'var(--success)'}">
+                        ${s.is_booked ? 'Booked' : 'Available'}
+                    </div>
+                    ${!s.is_booked ? `<button onclick="deleteSlot(${s.id})" style="position:absolute;top:4px;right:4px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px" title="Delete slot">&times;</button>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function openAddSlot() {
+            document.getElementById('addSlotModal').classList.remove('hidden');
+        }
+
+        async function addSlot() {
+            const date = document.getElementById('slotDate').value;
+            const start = document.getElementById('slotStart').value;
+            const end = document.getElementById('slotEnd').value;
+
+            if (!date || !start || !end) {
+                showToast('Please fill all fields', 'error');
+                return;
+            }
+
+            try {
+                const result = await API.post('/api/appointments/slots', {
+                    slot_date: date,
+                    start_time: start,
+                    end_time: end
+                });
+                if (result.success) {
+                    closeModal('addSlotModal');
+                    showToast('Slot added successfully', 'success');
+                    document.getElementById('slotDateFilter').value = date;
+                    loadSlots();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to add slot', 'error');
+            }
+        }
+
+        async function deleteSlot(slotId) {
+            if (!confirm('Delete this slot?')) return;
+            try {
+                const result = await API.delete(`/api/appointments/slots/${slotId}`);
+                if (result.success) {
+                    showToast('Slot deleted', 'success');
+                    loadSlots();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to delete', 'error');
+            }
+        }
+
+        // --- Profile ---
+        async function saveProfile(e) {
+            e.preventDefault();
+            try {
+                const result = await API.put('/api/doctors/profile', {
+                    full_name: document.getElementById('profileName').value,
+                    hospital: document.getElementById('profileHospital').value,
+                    experience_years: parseInt(document.getElementById('profileExperience').value) || 0,
+                    bio: document.getElementById('profileBio').value
+                });
+                if (result.success) {
+                    showToast('Profile updated', 'success');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to update profile', 'error');
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

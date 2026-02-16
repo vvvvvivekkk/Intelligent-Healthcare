@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Appointments – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav">
+                <li><a href="/patient/dashboard">Dashboard</a></li>
+                <li><a href="/patient/chatbot">AI Chatbot</a></li>
+                <li><a href="/patient/appointments" class="active">Appointments</a></li>
+                <li><a href="/doctors/browse">Find Doctors</a></li>
+            </ul>
+            <div class="nav-user">
+                <span class="nav-user-name" id="userName"></span>
+                <button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard">
+        <div class="container">
+            <div class="dash-header">
+                <h1>My Appointments</h1>
+                <p>View and manage your healthcare appointments</p>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="filterAppointments('all', this)">All</button>
+                <button class="tab-btn" onclick="filterAppointments('scheduled', this)">Upcoming</button>
+                <button class="tab-btn" onclick="filterAppointments('completed', this)">Completed</button>
+                <button class="tab-btn" onclick="filterAppointments('cancelled', this)">Cancelled</button>
+            </div>
+
+            <div class="appointment-list" id="appointmentList">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OTP Modal -->
+    <div class="modal-overlay hidden" id="otpModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Consultation Verification</h3>
+                <button class="modal-close" onclick="closeModal('otpModal')">&times;</button>
+            </div>
+            <div class="modal-body text-center">
+                <p>Enter OTP to start your consultation</p>
+                <div class="otp-input-group" id="otpInputs">
+                    <input type="text" maxlength="1" oninput="otpNext(this,1)">
+                    <input type="text" maxlength="1" oninput="otpNext(this,2)">
+                    <input type="text" maxlength="1" oninput="otpNext(this,3)">
+                    <input type="text" maxlength="1" oninput="otpNext(this,4)">
+                    <input type="text" maxlength="1" oninput="otpNext(this,5)">
+                    <input type="text" maxlength="1" oninput="otpNext(this,6)">
+                </div>
+                <div id="otpError" class="form-error hidden"></div>
+                <div id="otpDisplay" class="mt-2" style="font-size:0.85rem;color:var(--text-secondary)"></div>
+            </div>
+            <div class="modal-footer" style="justify-content:center;gap:12px">
+                <button class="btn btn-secondary" onclick="generateOTP()">Generate OTP</button>
+                <button class="btn btn-primary" onclick="verifyOTP()">Verify OTP</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reschedule Modal -->
+    <div class="modal-overlay hidden" id="rescheduleModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Reschedule Appointment</h3>
+                <button class="modal-close" onclick="closeModal('rescheduleModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Select New Date</label>
+                    <input type="date" class="form-input" id="rescheduleDate" onchange="loadRescheduleSlots()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Available Slots</label>
+                    <div class="slot-grid" id="rescheduleSlots">
+                        <p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('rescheduleModal')">Cancel</button>
+                <button class="btn btn-primary" id="confirmRescheduleBtn" onclick="confirmReschedule()" disabled>Reschedule</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentUser = null;
+        let allAppointments = [];
+        let currentFilter = 'all';
+        let activeAptId = null;
+        let activeDoctorId = null;
+        let selectedRescheduleSlot = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await requireAuth('patient');
+            if (!currentUser) return;
+            document.getElementById('userName').textContent = currentUser.full_name;
+
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('rescheduleDate').min = tomorrow.toISOString().split('T')[0];
+
+            loadAppointments();
+        });
+
+        async function loadAppointments() {
+            try {
+                const result = await API.get('/api/appointments/patient');
+                if (result.success) {
+                    allAppointments = result.data;
+                    renderAppointments();
+                }
+            } catch(e) {
+                document.getElementById('appointmentList').innerHTML =
+                    '<div class="empty-state"><p>Failed to load appointments</p></div>';
+            }
+        }
+
+        function filterAppointments(status, btn) {
+            currentFilter = status;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderAppointments();
+        }
+
+        function renderAppointments() {
+            const listEl = document.getElementById('appointmentList');
+            let filtered = allAppointments;
+
+            if (currentFilter === 'scheduled') {
+                filtered = filtered.filter(a => ['scheduled', 'rescheduled', 'otp_pending'].includes(a.status));
+            } else if (currentFilter === 'completed') {
+                filtered = filtered.filter(a => a.status === 'completed');
+            } else if (currentFilter === 'cancelled') {
+                filtered = filtered.filter(a => ['cancelled', 'emergency_cancelled'].includes(a.status));
+            }
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><h3>No appointments found</h3><p>Start an AI consultation to get matched with a doctor.</p><a href="/patient/chatbot" class="btn btn-primary btn-sm mt-2">Start Consultation</a></div>';
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(a => {
+                const date = new Date(a.slot_date);
+                const day = date.getDate();
+                const month = date.toLocaleString('default', { month: 'short' });
+                const canCancel = ['scheduled', 'rescheduled'].includes(a.status);
+                const canReschedule = ['emergency_cancelled', 'scheduled'].includes(a.status);
+                const canOTP = a.status === 'scheduled' || a.status === 'rescheduled';
+
+                return `
+                    <div class="appointment-item" style="flex-wrap:wrap;gap:12px">
+                        <div class="apt-info">
+                            <div class="apt-date">
+                                <div class="day">${day}</div>
+                                <div class="month">${month}</div>
+                            </div>
+                            <div class="apt-details">
+                                <h4>Dr. ${a.doctor_name}</h4>
+                                <p>${a.specialization}${a.hospital ? ' · ' + a.hospital : ''}</p>
+                                <p>${a.start_time} - ${a.end_time}</p>
+                                <p style="font-size:0.75rem;color:var(--text-light)">ID: ${a.appointment_id}</p>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span class="status-badge status-${a.status}">${a.status.replace('_', ' ')}</span>
+                            ${canOTP ? `<button class="btn btn-sm btn-success" onclick="openOTP(${a.id})">🔒 OTP</button>` : ''}
+                            ${canReschedule ? `<button class="btn btn-sm btn-warning" onclick="openReschedule(${a.id}, ${a.doctor_id})">📅 Reschedule</button>` : ''}
+                            ${canCancel ? `<button class="btn btn-sm btn-danger" onclick="cancelAppointment(${a.id})">Cancel</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function cancelAppointment(aptId) {
+            if (!confirm('Are you sure you want to cancel this appointment?')) return;
+
+            try {
+                const result = await API.post(`/api/appointments/${aptId}/cancel`);
+                if (result.success) {
+                    showToast('Appointment cancelled', 'success');
+                    loadAppointments();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to cancel', 'error');
+            }
+        }
+
+        function openOTP(aptId) {
+            activeAptId = aptId;
+            document.getElementById('otpError').classList.add('hidden');
+            document.getElementById('otpDisplay').textContent = '';
+            document.querySelectorAll('#otpInputs input').forEach(i => i.value = '');
+            document.getElementById('otpModal').classList.remove('hidden');
+        }
+
+        async function generateOTP() {
+            try {
+                const result = await API.post(`/api/appointments/${activeAptId}/otp/generate`);
+                if (result.success) {
+                    document.getElementById('otpDisplay').innerHTML =
+                        `<strong>Your OTP: ${result.data.otp}</strong><br><span style="font-size:0.75rem">Valid for 10 minutes. In production, this would be sent via SMS/email.</span>`;
+                    showToast('OTP generated', 'success');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Failed to generate OTP', 'error');
+            }
+        }
+
+        async function verifyOTP() {
+            const inputs = document.querySelectorAll('#otpInputs input');
+            const otp = Array.from(inputs).map(i => i.value).join('');
+            if (otp.length !== 6) {
+                document.getElementById('otpError').textContent = 'Please enter full 6-digit OTP';
+                document.getElementById('otpError').classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const result = await API.post(`/api/appointments/${activeAptId}/otp/verify`, { otp: otp });
+                if (result.success) {
+                    closeModal('otpModal');
+                    showToast('OTP verified! Consultation access granted.', 'success');
+                    loadAppointments();
+                } else {
+                    document.getElementById('otpError').textContent = result.message;
+                    document.getElementById('otpError').classList.remove('hidden');
+                }
+            } catch(e) {
+                showToast('Verification failed', 'error');
+            }
+        }
+
+        function otpNext(el, idx) {
+            if (el.value && idx < 6) {
+                el.nextElementSibling?.focus();
+            }
+        }
+
+        function openReschedule(aptId, doctorId) {
+            activeAptId = aptId;
+            activeDoctorId = doctorId;
+            selectedRescheduleSlot = null;
+            document.getElementById('confirmRescheduleBtn').disabled = true;
+            document.getElementById('rescheduleSlots').innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date</p>';
+            document.getElementById('rescheduleModal').classList.remove('hidden');
+        }
+
+        async function loadRescheduleSlots() {
+            const date = document.getElementById('rescheduleDate').value;
+            if (!date || !activeDoctorId) return;
+
+            const slotsEl = document.getElementById('rescheduleSlots');
+            slotsEl.innerHTML = '<div class="spinner" style="grid-column:1/-1"></div>';
+
+            try {
+                const result = await API.get(`/api/appointments/slots/doctor/${activeDoctorId}?date=${date}`);
+                if (result.success) {
+                    if (result.data.length === 0) {
+                        slotsEl.innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">No available slots</p>';
+                    } else {
+                        slotsEl.innerHTML = result.data.map(s => `
+                            <div class="slot-item" onclick="selectRescheduleSlot(${s.id}, this)">
+                                <div class="slot-time">${s.start_time}</div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary)">${s.end_time}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch(e) {
+                slotsEl.innerHTML = '<p style="color:var(--danger);grid-column:1/-1">Failed to load slots</p>';
+            }
+        }
+
+        function selectRescheduleSlot(slotId, el) {
+            document.querySelectorAll('#rescheduleSlots .slot-item').forEach(s => s.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedRescheduleSlot = slotId;
+            document.getElementById('confirmRescheduleBtn').disabled = false;
+        }
+
+        async function confirmReschedule() {
+            if (!selectedRescheduleSlot) return;
+
+            const btn = document.getElementById('confirmRescheduleBtn');
+            btn.disabled = true;
+            btn.textContent = 'Rescheduling...';
+
+            try {
+                const result = await API.post(`/api/appointments/${activeAptId}/reschedule`, {
+                    new_slot_id: selectedRescheduleSlot
+                });
+                if (result.success) {
+                    closeModal('rescheduleModal');
+                    showToast('Appointment rescheduled successfully', 'success');
+                    loadAppointments();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Rescheduling failed', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Reschedule';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

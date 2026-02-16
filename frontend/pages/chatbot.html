@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Health Consultant – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav">
+                <li><a href="/patient/dashboard">Dashboard</a></li>
+                <li><a href="/patient/chatbot" class="active">AI Chatbot</a></li>
+                <li><a href="/patient/appointments">Appointments</a></li>
+                <li><a href="/doctors/browse">Find Doctors</a></li>
+            </ul>
+            <div class="nav-user">
+                <span class="nav-user-name" id="userName"></span>
+                <button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Chatbot -->
+    <div class="chatbot-wrapper">
+        <div class="chat-header">
+            <h2>
+                <svg width="24" height="24" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
+                MedSync AI Assistant
+            </h2>
+            <div style="display:flex;align-items:center;gap:12px">
+                <div class="chat-status">
+                    <div class="dot"></div>
+                    Online
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="startNewSession()">New Chat</button>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <!-- Welcome message -->
+            <div class="chat-bubble assistant">
+                <div>Hello! 👋 I'm your MedSync AI Health Assistant.</div>
+                <div style="margin-top:8px">I can help you:</div>
+                <ul style="margin-top:4px;padding-left:20px">
+                    <li>Analyze your symptoms</li>
+                    <li>Suggest possible conditions</li>
+                    <li>Recommend specialists</li>
+                    <li>Book appointments</li>
+                </ul>
+                <div style="margin-top:8px"><strong>How are you feeling today? Please describe your symptoms.</strong></div>
+                <div class="timestamp">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            </div>
+        </div>
+
+        <div class="chat-input-area">
+            <textarea id="chatInput" placeholder="Describe your symptoms or ask a question..." rows="1"
+                      onkeydown="handleKeyDown(event)"></textarea>
+            <button class="chat-send-btn" id="sendBtn" onclick="sendMessage()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div class="modal-overlay hidden" id="bookingModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Book Appointment</h3>
+                <button class="modal-close" onclick="closeModal('bookingModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="bookingDoctorInfo"></div>
+                <div class="form-group mt-2">
+                    <label class="form-label">Select Date</label>
+                    <input type="date" class="form-input" id="bookingDate" onchange="loadBookingSlots()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Available Slots</label>
+                    <div class="slot-grid" id="bookingSlots">
+                        <p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date first</p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Reason (optional)</label>
+                    <input type="text" class="form-input" id="bookingReason" placeholder="AI-recommended consultation">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('bookingModal')">Cancel</button>
+                <button class="btn btn-primary" id="confirmBookBtn" onclick="confirmBooking()" disabled>Confirm Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentUser = null;
+        let sessionId = null;
+        let selectedDoctorId = null;
+        let selectedSlotId = null;
+        let isWaiting = false;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await requireAuth('patient');
+            if (!currentUser) return;
+            document.getElementById('userName').textContent = currentUser.full_name;
+
+            // Check for session in URL
+            const params = new URLSearchParams(window.location.search);
+            const existingSession = params.get('session');
+            if (existingSession) {
+                sessionId = existingSession;
+                loadChatHistory(sessionId);
+            } else {
+                // Get or create session
+                try {
+                    const result = await API.post('/api/chatbot/new-session');
+                    if (result.success) sessionId = result.data.session_id;
+                } catch(e) {}
+            }
+
+            // Auto-resize textarea
+            const textarea = document.getElementById('chatInput');
+            textarea.addEventListener('input', () => {
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+            });
+
+            // Set min booking date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('bookingDate').min = tomorrow.toISOString().split('T')[0];
+        });
+
+        async function loadChatHistory(sessId) {
+            try {
+                const result = await API.get(`/api/chatbot/history?session_id=${sessId}`);
+                if (result.success && result.data.length > 0) {
+                    const messagesEl = document.getElementById('chatMessages');
+                    // Keep welcome message, append history
+                    result.data.forEach(msg => {
+                        appendBubble(msg.message, msg.role, msg.created_at);
+                    });
+                    scrollToBottom();
+                }
+            } catch(e) {}
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message || isWaiting) return;
+
+            isWaiting = true;
+            input.value = '';
+            input.style.height = 'auto';
+            document.getElementById('sendBtn').disabled = true;
+
+            // Add user bubble
+            appendBubble(message, 'user');
+
+            // Show typing indicator
+            showTyping();
+
+            try {
+                const result = await API.post('/api/chatbot/message', {
+                    message: message,
+                    session_id: sessionId
+                });
+
+                hideTyping();
+
+                if (result.success) {
+                    sessionId = result.data.session_id;
+                    appendBubble(result.data.response, 'assistant');
+
+                    // Check for AI analysis and doctor recommendations
+                    if (result.data.analysis) {
+                        appendAnalysisCard(result.data.analysis);
+                    }
+                    if (result.data.recommended_doctors && result.data.recommended_doctors.length > 0) {
+                        appendDoctorRecommendations(result.data.recommended_doctors);
+                    }
+                } else {
+                    appendBubble('Sorry, I encountered an error. Please try again.', 'assistant');
+                }
+            } catch(err) {
+                hideTyping();
+                appendBubble('Connection error. Please check your connection and try again.', 'assistant');
+            }
+
+            isWaiting = false;
+            document.getElementById('sendBtn').disabled = false;
+            scrollToBottom();
+        }
+
+        function appendBubble(text, role, timestamp) {
+            const messagesEl = document.getElementById('chatMessages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${role}`;
+
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                                   : new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+            // Simple markdown-like rendering for assistant messages
+            let renderedText = text;
+            if (role === 'assistant') {
+                renderedText = renderMarkdown(text);
+            } else {
+                renderedText = escapeHtml(text);
+            }
+
+            bubble.innerHTML = `<div>${renderedText}</div><div class="timestamp">${time}</div>`;
+            messagesEl.appendChild(bubble);
+            scrollToBottom();
+        }
+
+        function renderMarkdown(text) {
+            // Basic markdown rendering
+            let html = escapeHtml(text);
+            // Bold
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // Italic
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            // Code blocks
+            html = html.replace(/```json\n?([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Lists
+            html = html.replace(/^- (.*)/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+            // Line breaks
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showTyping() {
+            const messagesEl = document.getElementById('chatMessages');
+            const typing = document.createElement('div');
+            typing.className = 'chat-typing';
+            typing.id = 'typingIndicator';
+            typing.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+            messagesEl.appendChild(typing);
+            scrollToBottom();
+        }
+
+        function hideTyping() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
+
+        function appendAnalysisCard(analysis) {
+            const messagesEl = document.getElementById('chatMessages');
+            const card = document.createElement('div');
+            card.className = 'analysis-card';
+            card.style.maxWidth = '80%';
+
+            const confClass = analysis.confidence_level === 'high' ? 'confidence-high' :
+                              analysis.confidence_level === 'medium' ? 'confidence-medium' : 'confidence-low';
+
+            card.innerHTML = `
+                <h4>🔬 AI Health Analysis</h4>
+                <div class="analysis-item">
+                    <span class="label">Possible Conditions:</span>
+                    <span class="value">${analysis.possible_diseases.join(', ')}</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="label">Confidence:</span>
+                    <span class="confidence-badge ${confClass}">${analysis.confidence_level}</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="label">Recommended Specialist:</span>
+                    <span class="value">${analysis.recommended_specialization}</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="label">Advice:</span>
+                    <span class="value">${analysis.basic_advice}</span>
+                </div>
+            `;
+            messagesEl.appendChild(card);
+            scrollToBottom();
+        }
+
+        function appendDoctorRecommendations(doctors) {
+            const messagesEl = document.getElementById('chatMessages');
+            const container = document.createElement('div');
+            container.style.maxWidth = '80%';
+            container.innerHTML = `
+                <div style="margin-top:8px;margin-bottom:8px;font-weight:600;font-size:0.9rem">
+                    👨‍⚕️ Recommended Doctors (${doctors.length} found):
+                </div>
+                <div class="doctor-rec-list">
+                    ${doctors.slice(0, 5).map(d => `
+                        <div class="doctor-rec-item">
+                            <div>
+                                <div style="font-weight:600">${d.full_name}</div>
+                                <div style="font-size:0.8rem;color:var(--text-secondary)">
+                                    ${d.specialization} · ${d.experience_years}yr exp · ⭐ ${d.rating}
+                                </div>
+                                <div style="font-size:0.75rem;color:var(--text-light)">${d.hospital || ''}</div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="openBooking(${d.id}, '${escapeHtml(d.full_name)}', '${d.specialization}')">
+                                Book
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            messagesEl.appendChild(container);
+            scrollToBottom();
+        }
+
+        function openBooking(doctorId, doctorName, specialization) {
+            selectedDoctorId = doctorId;
+            selectedSlotId = null;
+            document.getElementById('confirmBookBtn').disabled = true;
+
+            document.getElementById('bookingDoctorInfo').innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;padding:16px;background:var(--bg);border-radius:var(--radius-sm)">
+                    <div class="doctor-avatar">${doctorName.charAt(0)}</div>
+                    <div>
+                        <div style="font-weight:600">${doctorName}</div>
+                        <span class="doctor-spec">${specialization}</span>
+                    </div>
+                </div>
+            `;
+            document.getElementById('bookingSlots').innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date to view slots</p>';
+            document.getElementById('bookingModal').classList.remove('hidden');
+        }
+
+        async function loadBookingSlots() {
+            const date = document.getElementById('bookingDate').value;
+            if (!date) return;
+
+            const slotsEl = document.getElementById('bookingSlots');
+            slotsEl.innerHTML = '<div class="spinner" style="grid-column:1/-1"></div>';
+
+            try {
+                const result = await API.get(`/api/chatbot/doctor-slots/${selectedDoctorId}?date=${date}`);
+                if (result.success) {
+                    if (result.data.length === 0) {
+                        slotsEl.innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">No available slots for this date</p>';
+                    } else {
+                        slotsEl.innerHTML = result.data.map(s => `
+                            <div class="slot-item" data-slot-id="${s.id}" onclick="selectSlot(${s.id}, this)">
+                                <div class="slot-time">${s.start_time}</div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary)">${s.end_time}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch(e) {
+                slotsEl.innerHTML = '<p style="grid-column:1/-1;color:var(--danger)">Failed to load slots</p>';
+            }
+        }
+
+        function selectSlot(slotId, el) {
+            document.querySelectorAll('#bookingSlots .slot-item').forEach(s => s.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedSlotId = slotId;
+            document.getElementById('confirmBookBtn').disabled = false;
+        }
+
+        async function confirmBooking() {
+            if (!selectedDoctorId || !selectedSlotId) return;
+
+            const btn = document.getElementById('confirmBookBtn');
+            btn.disabled = true;
+            btn.textContent = 'Booking...';
+
+            try {
+                const result = await API.post('/api/chatbot/book-from-chat', {
+                    doctor_id: selectedDoctorId,
+                    slot_id: selectedSlotId,
+                    reason: document.getElementById('bookingReason').value || 'AI-recommended consultation'
+                });
+
+                if (result.success) {
+                    closeModal('bookingModal');
+                    const apt = result.data;
+                    appendBubble(
+                        `✅ Appointment booked successfully!\n\n` +
+                        `📋 Appointment ID: ${apt.appointment_id}\n` +
+                        `👨‍⚕️ Doctor: ${apt.doctor_name}\n` +
+                        `📅 Date: ${apt.slot_date}\n` +
+                        `⏰ Time: ${apt.start_time} - ${apt.end_time}\n` +
+                        `🆔 Patient ID: ${apt.patient_code}\n\n` +
+                        `You can view and manage this appointment from your dashboard.`,
+                        'assistant'
+                    );
+                    showToast('Appointment booked successfully!', 'success');
+                } else {
+                    showToast(result.message || 'Booking failed', 'error');
+                }
+            } catch(e) {
+                showToast('Booking failed. Please try again.', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Confirm Booking';
+        }
+
+        async function startNewSession() {
+            try {
+                const result = await API.post('/api/chatbot/new-session');
+                if (result.success) {
+                    sessionId = result.data.session_id;
+                    const messagesEl = document.getElementById('chatMessages');
+                    messagesEl.innerHTML = `
+                        <div class="chat-bubble assistant">
+                            <div>New consultation started! 🩺</div>
+                            <div style="margin-top:8px"><strong>How can I help you today? Please describe your symptoms.</strong></div>
+                            <div class="timestamp">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                        </div>
+                    `;
+                    // Update URL without reload
+                    window.history.replaceState({}, '', '/patient/chatbot');
+                }
+            } catch(e) {}
+        }
+
+        function scrollToBottom() {
+            const el = document.getElementById('chatMessages');
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

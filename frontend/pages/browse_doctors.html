@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Doctors – MedSync AI</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                MedSync AI
+            </a>
+            <ul class="navbar-nav">
+                <li><a href="/patient/dashboard">Dashboard</a></li>
+                <li><a href="/patient/chatbot">AI Chatbot</a></li>
+                <li><a href="/patient/appointments">Appointments</a></li>
+                <li><a href="/doctors/browse" class="active">Find Doctors</a></li>
+            </ul>
+            <div class="nav-user">
+                <span class="nav-user-name" id="userName"></span>
+                <button class="btn btn-sm btn-secondary" onclick="API.logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard">
+        <div class="container">
+            <div class="dash-header">
+                <h1>Find a Doctor</h1>
+                <p>Search by name, specialization, or condition</p>
+            </div>
+
+            <!-- Search -->
+            <div class="search-bar" style="margin-bottom:24px">
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+                    <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+                        <input type="text" class="form-input" id="searchQuery" placeholder="Search doctors, specializations, diseases..." oninput="debounceSearch()">
+                    </div>
+                    <div class="form-group" style="min-width:180px;margin-bottom:0">
+                        <select class="form-input" id="specFilter" onchange="searchDoctors()">
+                            <option value="">All Specializations</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="searchDoctors()">Search</button>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="doctorResults">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div class="modal-overlay hidden" id="bookingModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Book Appointment</h3>
+                <button class="modal-close" onclick="closeModal('bookingModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="bookingDoctorInfo" style="margin-bottom:16px"></div>
+                <div class="form-group">
+                    <label class="form-label">Select Date</label>
+                    <input type="date" class="form-input" id="bookingDate" onchange="loadBookingSlots()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Available Slots</label>
+                    <div class="slot-grid" id="bookingSlots">
+                        <p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date to see available slots</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('bookingModal')">Cancel</button>
+                <button class="btn btn-primary" id="confirmBookBtn" onclick="confirmBooking()" disabled>Confirm Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentUser = null;
+        let allDoctors = [];
+        let bookingDoctorId = null;
+        let selectedSlotId = null;
+        let debounceTimer = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentUser = await requireAuth('patient');
+            if (!currentUser) return;
+            document.getElementById('userName').textContent = currentUser.full_name;
+
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('bookingDate').min = tomorrow.toISOString().split('T')[0];
+
+            loadSpecializations();
+            searchDoctors();
+        });
+
+        async function loadSpecializations() {
+            try {
+                const result = await API.get('/api/doctors/specializations');
+                if (result.success) {
+                    const sel = document.getElementById('specFilter');
+                    result.data.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s;
+                        opt.textContent = s;
+                        sel.appendChild(opt);
+                    });
+                }
+            } catch(e) {}
+        }
+
+        function debounceSearch() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(searchDoctors, 300);
+        }
+
+        async function searchDoctors() {
+            const query = document.getElementById('searchQuery').value.trim();
+            const spec = document.getElementById('specFilter').value;
+            const resultsEl = document.getElementById('doctorResults');
+            resultsEl.innerHTML = '<div class="spinner"></div>';
+
+            try {
+                let url;
+                if (spec && !query) {
+                    url = `/api/doctors/by-specialization/${encodeURIComponent(spec)}`;
+                } else if (query) {
+                    url = `/api/doctors/search?q=${encodeURIComponent(query)}`;
+                } else {
+                    url = '/api/doctors/all';
+                }
+
+                const result = await API.get(url);
+                if (result.success) {
+                    allDoctors = result.data;
+                    renderDoctors();
+                }
+            } catch(e) {
+                resultsEl.innerHTML = '<div class="empty-state"><p>Failed to search doctors</p></div>';
+            }
+        }
+
+        function renderDoctors() {
+            const resultsEl = document.getElementById('doctorResults');
+            if (allDoctors.length === 0) {
+                resultsEl.innerHTML = '<div class="empty-state"><h3>No doctors found</h3><p>Try a different search query or specialization.</p></div>';
+                return;
+            }
+
+            resultsEl.innerHTML = `
+                <div style="margin-bottom:12px;color:var(--text-secondary);font-size:0.9rem">${allDoctors.length} doctor${allDoctors.length !== 1 ? 's' : ''} found</div>
+                <div class="doctor-grid">
+                    ${allDoctors.map(d => `
+                        <div class="doctor-card">
+                            <div class="doctor-avatar">${getInitials(d.full_name)}</div>
+                            <div class="doctor-info">
+                                <h3 class="doctor-name">Dr. ${d.full_name}</h3>
+                                <span class="doctor-specialization">${d.specialization}</span>
+                                <div class="doctor-details">
+                                    ${d.hospital ? `<span>🏥 ${d.hospital}</span>` : ''}
+                                    ${d.experience_years ? `<span>📋 ${d.experience_years} yrs exp</span>` : ''}
+                                </div>
+                                ${d.bio ? `<p style="font-size:0.8rem;color:var(--text-secondary);margin-top:8px;line-height:1.4">${d.bio.substring(0, 120)}${d.bio.length > 120 ? '...' : ''}</p>` : ''}
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="openBooking(${d.id}, '${escapeHtml(d.full_name)}', '${escapeHtml(d.specialization)}')">
+                                Book Appointment
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        }
+
+        function openBooking(doctorId, name, spec) {
+            bookingDoctorId = doctorId;
+            selectedSlotId = null;
+            document.getElementById('confirmBookBtn').disabled = true;
+            document.getElementById('bookingDoctorInfo').innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div class="doctor-avatar" style="width:48px;height:48px;font-size:0.9rem">${getInitials(name)}</div>
+                    <div>
+                        <strong>Dr. ${name}</strong>
+                        <div style="font-size:0.85rem;color:var(--text-secondary)">${spec}</div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('bookingSlots').innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">Select a date to see available slots</p>';
+            document.getElementById('bookingDate').value = '';
+            document.getElementById('bookingModal').classList.remove('hidden');
+        }
+
+        async function loadBookingSlots() {
+            const date = document.getElementById('bookingDate').value;
+            if (!date || !bookingDoctorId) return;
+
+            const slotsEl = document.getElementById('bookingSlots');
+            slotsEl.innerHTML = '<div class="spinner" style="grid-column:1/-1"></div>';
+
+            try {
+                const result = await API.get(`/api/appointments/slots/doctor/${bookingDoctorId}?date=${date}`);
+                if (result.success) {
+                    if (result.data.length === 0) {
+                        slotsEl.innerHTML = '<p class="text-center" style="grid-column:1/-1;color:var(--text-secondary)">No available slots for this date</p>';
+                    } else {
+                        slotsEl.innerHTML = result.data.map(s => `
+                            <div class="slot-item" onclick="selectSlot(${s.id}, this)">
+                                <div class="slot-time">${s.start_time}</div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary)">${s.end_time}</div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch(e) {
+                slotsEl.innerHTML = '<p style="color:var(--danger);grid-column:1/-1">Failed to load slots</p>';
+            }
+        }
+
+        function selectSlot(slotId, el) {
+            document.querySelectorAll('#bookingSlots .slot-item').forEach(s => s.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedSlotId = slotId;
+            document.getElementById('confirmBookBtn').disabled = false;
+        }
+
+        async function confirmBooking() {
+            if (!selectedSlotId) return;
+            const btn = document.getElementById('confirmBookBtn');
+            btn.disabled = true;
+            btn.textContent = 'Booking...';
+
+            try {
+                const result = await API.post('/api/appointments/book', {
+                    slot_id: selectedSlotId
+                });
+                if (result.success) {
+                    closeModal('bookingModal');
+                    showToast('Appointment booked successfully!', 'success');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch(e) {
+                showToast('Booking failed', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Confirm Booking';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
