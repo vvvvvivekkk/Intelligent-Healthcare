@@ -1,16 +1,68 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Doctor Dashboard – MedSync AI</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .otp-verify-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .otp-verify-group input {
+            width: 48px;
+            height: 56px;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+            color: #1e293b;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .otp-verify-group input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+            outline: none;
+            background: #fff;
+        }
+
+        .otp-info-text {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        .otp-info-text strong {
+            color: var(--text);
+        }
+
+        .otp-error {
+            text-align: center;
+            color: #dc2626;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            min-height: 20px;
+        }
+    </style>
 </head>
+
 <body>
     <nav class="navbar">
         <div class="container">
             <a href="/" class="navbar-brand">
-                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                <svg viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#2563eb" />
+                    <path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+                </svg>
                 MedSync AI
             </a>
             <ul class="navbar-nav">
@@ -32,10 +84,22 @@
 
             <!-- Stats -->
             <div class="stats-grid">
-                <div class="stat-card"><div class="stat-value" id="statToday">0</div><div class="stat-label">Today's Appointments</div></div>
-                <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Appointments</div></div>
-                <div class="stat-card"><div class="stat-value" id="statSlots">0</div><div class="stat-label">Active Slots</div></div>
-                <div class="stat-card"><div class="stat-value" id="statCompleted">0</div><div class="stat-label">Completed</div></div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statToday">0</div>
+                    <div class="stat-label">Today's Appointments</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotal">0</div>
+                    <div class="stat-label">Total Appointments</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statSlots">0</div>
+                    <div class="stat-label">Active Slots</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statCompleted">0</div>
+                    <div class="stat-label">Completed</div>
+                </div>
             </div>
 
             <!-- Tabs -->
@@ -47,7 +111,8 @@
 
             <!-- Appointments Tab -->
             <div class="tab-content active" id="tab-appointments">
-                <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <div class="section-header"
+                    style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h2 style="margin:0">Appointments</h2>
                     <select class="form-input" style="width:auto" id="aptFilter" onchange="renderAppointments()">
                         <option value="all">All</option>
@@ -63,7 +128,8 @@
 
             <!-- Slots Tab -->
             <div class="tab-content" id="tab-slots" style="display:none">
-                <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <div class="section-header"
+                    style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h2 style="margin:0">Manage Slots</h2>
                     <button class="btn btn-primary btn-sm" onclick="openAddSlot()">+ Add Slot</button>
                 </div>
@@ -94,7 +160,8 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Bio</label>
-                            <textarea class="form-input" id="profileBio" rows="4" placeholder="Brief professional bio"></textarea>
+                            <textarea class="form-input" id="profileBio" rows="4"
+                                placeholder="Brief professional bio"></textarea>
                         </div>
                         <button type="submit" class="btn btn-primary" style="width:100%">Save Changes</button>
                     </form>
@@ -131,11 +198,42 @@
         </div>
     </div>
 
+    <!-- OTP Verification Modal (Doctor enters patient OTP to complete appointment) -->
+    <div class="modal-overlay hidden" id="otpVerifyModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>🔐 Verify Patient OTP</h3>
+                <button class="modal-close" onclick="closeModal('otpVerifyModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="otp-info-text">
+                    Ask the patient for their <strong>6-digit OTP</strong> to verify and complete this consultation.
+                </p>
+                <p class="otp-info-text" id="otpPatientInfo"></p>
+                <div class="otp-verify-group" id="doctorOtpInputs">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 0)" onkeydown="docOtpBack(event, 0)">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 1)" onkeydown="docOtpBack(event, 1)">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 2)" onkeydown="docOtpBack(event, 2)">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 3)" onkeydown="docOtpBack(event, 3)">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 4)" onkeydown="docOtpBack(event, 4)">
+                    <input type="text" maxlength="1" oninput="docOtpNext(this, 5)" onkeydown="docOtpBack(event, 5)">
+                </div>
+                <div class="otp-error" id="otpVerifyError"></div>
+            </div>
+            <div class="modal-footer" style="justify-content:center">
+                <button class="btn btn-secondary" onclick="closeModal('otpVerifyModal')">Cancel</button>
+                <button class="btn btn-success" id="verifyCompleteBtn" onclick="verifyAndComplete()">✓ Verify &
+                    Complete</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/js/app.js"></script>
     <script>
         let currentUser = null;
         let allAppointments = [];
         let allSlots = [];
+        let verifyAptId = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
             currentUser = await requireAuth('doctor');
@@ -174,7 +272,7 @@
                     updateStats();
                     renderAppointments();
                 }
-            } catch(e) {
+            } catch (e) {
                 document.getElementById('appointmentList').innerHTML =
                     '<div class="empty-state"><p>Failed to load appointments</p></div>';
             }
@@ -182,7 +280,7 @@
 
         function updateStats() {
             const today = new Date().toISOString().split('T')[0];
-            const todayApts = allAppointments.filter(a => a.slot_date === today && !['cancelled','emergency_cancelled'].includes(a.status));
+            const todayApts = allAppointments.filter(a => a.slot_date === today && !['cancelled', 'emergency_cancelled'].includes(a.status));
             const completed = allAppointments.filter(a => a.status === 'completed');
 
             document.getElementById('statToday').textContent = todayApts.length;
@@ -196,11 +294,11 @@
             let filtered = allAppointments;
 
             if (filter === 'scheduled') {
-                filtered = filtered.filter(a => ['scheduled','rescheduled','otp_pending'].includes(a.status));
+                filtered = filtered.filter(a => ['scheduled', 'rescheduled', 'otp_pending'].includes(a.status));
             } else if (filter === 'completed') {
                 filtered = filtered.filter(a => a.status === 'completed');
             } else if (filter === 'cancelled') {
-                filtered = filtered.filter(a => ['cancelled','emergency_cancelled'].includes(a.status));
+                filtered = filtered.filter(a => ['cancelled', 'emergency_cancelled'].includes(a.status));
             }
 
             if (filtered.length === 0) {
@@ -212,7 +310,7 @@
                 const date = new Date(a.slot_date);
                 const day = date.getDate();
                 const month = date.toLocaleString('default', { month: 'short' });
-                const isActive = ['scheduled','rescheduled'].includes(a.status);
+                const isActive = ['scheduled', 'rescheduled'].includes(a.status);
 
                 return `
                     <div class="appointment-item" style="flex-wrap:wrap;gap:12px">
@@ -230,7 +328,7 @@
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                             <span class="status-badge status-${a.status}">${a.status.replace('_', ' ')}</span>
                             ${isActive ? `
-                                <button class="btn btn-sm btn-success" onclick="markCompleted(${a.id})">✓ Complete</button>
+                                <button class="btn btn-sm btn-success" onclick="openVerifyOTP(${a.id}, '${a.patient_name.replace(/'/g, "\\'")}')">🔐 Verify & Complete</button>
                                 <button class="btn btn-sm btn-danger" onclick="emergencyCancel(${a.id})">🚨 Emergency</button>
                             ` : ''}
                         </div>
@@ -239,18 +337,62 @@
             }).join('');
         }
 
-        async function markCompleted(aptId) {
+        // --- OTP Verification to Complete ---
+        function openVerifyOTP(aptId, patientName) {
+            verifyAptId = aptId;
+            document.getElementById('otpPatientInfo').innerHTML =
+                `Patient: <strong>${patientName}</strong>`;
+            document.getElementById('otpVerifyError').textContent = '';
+            document.querySelectorAll('#doctorOtpInputs input').forEach(i => i.value = '');
+            document.getElementById('otpVerifyModal').classList.remove('hidden');
+            // Focus the first input
+            setTimeout(() => document.querySelector('#doctorOtpInputs input').focus(), 100);
+        }
+
+        function docOtpNext(el, idx) {
+            const inputs = document.querySelectorAll('#doctorOtpInputs input');
+            if (el.value && idx < 5) {
+                inputs[idx + 1].focus();
+            }
+        }
+
+        function docOtpBack(e, idx) {
+            if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+                const inputs = document.querySelectorAll('#doctorOtpInputs input');
+                inputs[idx - 1].focus();
+            }
+        }
+
+        async function verifyAndComplete() {
+            const inputs = document.querySelectorAll('#doctorOtpInputs input');
+            const otp = Array.from(inputs).map(i => i.value).join('');
+            const errorEl = document.getElementById('otpVerifyError');
+
+            if (otp.length !== 6) {
+                errorEl.textContent = 'Please enter the full 6-digit OTP';
+                return;
+            }
+
+            const btn = document.getElementById('verifyCompleteBtn');
+            btn.disabled = true;
+            btn.textContent = 'Verifying...';
+            errorEl.textContent = '';
+
             try {
-                const result = await API.post(`/api/appointments/${aptId}/status`, { status: 'completed' });
+                const result = await API.post(`/api/appointments/${verifyAptId}/otp/verify`, { otp: otp });
                 if (result.success) {
-                    showToast('Marked as completed', 'success');
+                    closeModal('otpVerifyModal');
+                    showToast('✓ OTP verified — appointment completed!', 'success');
                     loadAppointments();
                 } else {
-                    showToast(result.message, 'error');
+                    errorEl.textContent = result.message || 'Invalid or expired OTP';
                 }
-            } catch(e) {
-                showToast('Failed to update', 'error');
+            } catch (e) {
+                errorEl.textContent = 'Verification failed. Please try again.';
             }
+
+            btn.disabled = false;
+            btn.textContent = '✓ Verify & Complete';
         }
 
         async function emergencyCancel(aptId) {
@@ -265,7 +407,7 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Cancellation failed', 'error');
             }
         }
@@ -285,7 +427,7 @@
                     document.getElementById('statSlots').textContent = allSlots.length;
                     renderSlots();
                 }
-            } catch(e) {
+            } catch (e) {
                 slotsEl.innerHTML = '<p style="color:var(--danger);grid-column:1/-1">Failed to load slots</p>';
             }
         }
@@ -337,7 +479,7 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Failed to add slot', 'error');
             }
         }
@@ -352,7 +494,7 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Failed to delete', 'error');
             }
         }
@@ -372,7 +514,7 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Failed to update profile', 'error');
             }
         }
@@ -382,4 +524,5 @@
         }
     </script>
 </body>
+
 </html>

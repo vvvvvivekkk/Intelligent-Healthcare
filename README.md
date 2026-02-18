@@ -56,14 +56,34 @@ Open **http://localhost:5000** in your browser.
 
 ## Test Credentials
 
-| Role    | Email                          | Password    |
-|---------|--------------------------------|-------------|
-| Patient | patient@medsync.com            | patient123  |
-| Doctor  | dr.sharma@medsync.com          | doctor123   |
-| Doctor  | dr.patel@medsync.com           | doctor123   |
-| Doctor  | dr.kumar@medsync.com           | doctor123   |
+> **Note:** There is no separate admin role. The system has **Patient** and **Doctor** portals only. Doctors are auto-verified via seed data.
 
-All 12 seeded doctors use password `doctor123`.
+### 🧑‍🤒 Patient Account
+
+| Email                  | Password     | Patient ID    |
+|------------------------|-------------- |---------------|
+| patient@medsync.com    | patient123   | PAT-TEST0001  |
+
+**Login at:** [http://localhost:5000/login](http://localhost:5000/login)
+
+### 👨‍⚕️ Doctor Accounts (All use password: `doctor123`)
+
+| #  | Name                  | Email                            | Specialization    | Hospital                     | Doctor ID    |
+|----|----------------------|----------------------------------|-------------------|------------------------------|--------------|
+| 1  | Dr. Sarah Mitchell    | sarah.mitchell@medsync.com       | Cardiology        | City Heart Hospital          | DOC-CARD001  |
+| 2  | Dr. James Chen        | james.chen@medsync.com           | Neurology         | NeuroHealth Center           | DOC-NEUR001  |
+| 3  | Dr. Priya Sharma      | priya.sharma@medsync.com         | Dermatology       | SkinCare Clinic              | DOC-DERM001  |
+| 4  | Dr. Michael Brown     | michael.brown@medsync.com        | Orthopedics       | Joint & Spine Center         | DOC-ORTH001  |
+| 5  | Dr. Emily Davis       | emily.davis@medsync.com          | Pediatrics        | Children's Wellness Clinic   | DOC-PEDI001  |
+| 6  | Dr. Robert Wilson     | robert.wilson@medsync.com        | Gastroenterology  | Digestive Health Institute   | DOC-GAST001  |
+| 7  | Dr. Lisa Anderson     | lisa.anderson@medsync.com        | Pulmonology       | Breathing Care Center        | DOC-PULM001  |
+| 8  | Dr. Raj Patel         | raj.patel@medsync.com            | Endocrinology     | Diabetes & Hormone Center    | DOC-ENDO001  |
+| 9  | Dr. Amanda Foster     | amanda.foster@medsync.com        | Psychiatry        | Mental Wellness Institute    | DOC-PSYC001  |
+| 10 | Dr. David Kim         | david.kim@medsync.com            | Ophthalmology     | Vision Care Center           | DOC-OPTH001  |
+| 11 | Dr. Maria Garcia      | maria.garcia@medsync.com         | ENT               | Ear Nose Throat Specialists  | DOC-ENT001   |
+| 12 | Dr. Thomas Lee        | thomas.lee@medsync.com           | General Medicine  | HealthFirst Primary Care     | DOC-GENM001  |
+
+**Login at:** [http://localhost:5000/doctor/login](http://localhost:5000/doctor/login)
 
 ## Project Structure
 

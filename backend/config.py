@@ -8,8 +8,9 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key')
     DATABASE_PATH = os.getenv('DATABASE_PATH', 'medsync.db')
     OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
-    OPENROUTER_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
-    OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+    OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'mistralai/mistral-7b-instruct')
+    OPENROUTER_FALLBACK_MODEL = os.getenv('OPENROUTER_FALLBACK_MODEL', 'meta-llama/llama-3-8b-instruct')
+    OPENROUTER_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1/chat/completions')
     SESSION_TYPE = 'filesystem'
     PERMANENT_SESSION_LIFETIME = 3600
     OTP_EXPIRY_MINUTES = 10

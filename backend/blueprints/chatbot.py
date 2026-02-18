@@ -3,6 +3,7 @@ from backend.services.chatbot_service import ChatbotService
 from backend.services.doctor_service import DoctorService
 from backend.services.appointment_service import AppointmentService
 from backend.services.notification_service import NotificationService
+from backend.services.otp_service import OTPService
 from backend.utils.helpers import (
     success_response, error_response, patient_required
 )
@@ -31,8 +32,11 @@ def send_message():
     }
 
     if parsed_data:
-        result['analysis'] = parsed_data
-        # Auto-recommend doctors based on specialization
+        # Only include full analysis card if structured data (diseases/advice) is present
+        if 'possible_diseases' in parsed_data:
+            result['analysis'] = parsed_data
+
+        # Auto-recommend doctors based on specialization (works for both JSON and tag)
         spec = parsed_data.get('recommended_specialization', '')
         if spec:
             doctors = DoctorService.get_doctors_by_specialization(spec)
@@ -104,13 +108,51 @@ def book_from_chat():
         appointment, session['user_id'], doctor_id
     )
 
+    # Auto-generate OTP at booking time (valid for 24 hours)
+    otp_code = OTPService.create_otp(
+        appointment['id'], expiry_minutes=1440, update_status=False
+    )
+    NotificationService.create_notification(
+        recipient_type='patient',
+        title='🔐 Consultation OTP',
+        message=f"Your verification OTP for appointment on "
+                f"{appointment.get('slot_date', '')} at {appointment.get('start_time', '')} "
+                f"is: {otp_code}. Share this with your doctor during consultation.",
+        notification_type='otp',
+        user_id=session['user_id'],
+        appointment_id=appointment['id']
+    )
+    appointment['otp_code'] = otp_code
+
     return success_response(appointment, 'Appointment booked from chatbot', 201)
 
 
 @chatbot_bp.route('/doctor-slots/<int:doctor_id>', methods=['GET'])
 @patient_required
 def get_doctor_slots_for_chat(doctor_id):
-    """Get available slots for doctor selection in chat."""
+    """Get ALL slots for a doctor (both available and booked) so UI can show booked ones as unavailable."""
     date = request.args.get('date')
-    slots = AppointmentService.get_available_slots(doctor_id, date)
+    # Return ALL slots — frontend will show booked slots as red/disabled
+    slots = AppointmentService.get_doctor_slots(doctor_id, date, available_only=False)
     return success_response(slots)
+
+
+@chatbot_bp.route('/specializations', methods=['GET'])
+@patient_required
+def get_specializations_for_chat():
+    """Get all available specializations for booking flow."""
+    specs = DoctorService.get_specializations()
+    return success_response(specs)
+
+
+@chatbot_bp.route('/doctors-by-spec', methods=['GET'])
+@patient_required
+def get_doctors_by_spec_for_chat():
+    """Get doctors by specialization for booking flow."""
+    spec = request.args.get('specialization', '')
+    if not spec:
+        return error_response('Specialization required')
+    doctors = DoctorService.get_doctors_by_specialization(spec)
+    if not doctors:
+        doctors = DoctorService.search_doctors(spec, 'specialization')
+    return success_response(doctors)

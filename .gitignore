@@ -5,3 +5,9 @@ __pycache__/
 medsync.db
 venv/
 .vscode/
+reproduction_chatbot.py
+test_openrouter.py
+git_info.txt
+git_status.txt
+test_result.txt
+pytest.txt

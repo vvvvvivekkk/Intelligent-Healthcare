@@ -1,16 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Appointments – MedSync AI</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
     <nav class="navbar">
         <div class="container">
             <a href="/" class="navbar-brand">
-                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                <svg viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#2563eb" />
+                    <path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+                </svg>
                 MedSync AI
             </a>
             <ul class="navbar-nav">
@@ -47,29 +52,26 @@
         </div>
     </div>
 
-    <!-- OTP Modal -->
+    <!-- View OTP Modal -->
     <div class="modal-overlay hidden" id="otpModal">
         <div class="modal">
             <div class="modal-header">
-                <h3>Consultation Verification</h3>
+                <h3>🔐 Your Consultation OTP</h3>
                 <button class="modal-close" onclick="closeModal('otpModal')">&times;</button>
             </div>
             <div class="modal-body text-center">
-                <p>Enter OTP to start your consultation</p>
-                <div class="otp-input-group" id="otpInputs">
-                    <input type="text" maxlength="1" oninput="otpNext(this,1)">
-                    <input type="text" maxlength="1" oninput="otpNext(this,2)">
-                    <input type="text" maxlength="1" oninput="otpNext(this,3)">
-                    <input type="text" maxlength="1" oninput="otpNext(this,4)">
-                    <input type="text" maxlength="1" oninput="otpNext(this,5)">
-                    <input type="text" maxlength="1" oninput="otpNext(this,6)">
+                <p style="color:var(--text-secondary);margin-bottom:16px">
+                    Share this OTP with your doctor during consultation to verify and complete the appointment.
+                </p>
+                <div id="otpDisplay" style="margin:20px 0">
+                    <div class="spinner"></div>
                 </div>
-                <div id="otpError" class="form-error hidden"></div>
-                <div id="otpDisplay" class="mt-2" style="font-size:0.85rem;color:var(--text-secondary)"></div>
+                <p style="font-size:0.8rem;color:var(--text-light);margin-top:12px">
+                    ⚠️ Do not share this OTP with anyone other than your doctor.
+                </p>
             </div>
-            <div class="modal-footer" style="justify-content:center;gap:12px">
-                <button class="btn btn-secondary" onclick="generateOTP()">Generate OTP</button>
-                <button class="btn btn-primary" onclick="verifyOTP()">Verify OTP</button>
+            <div class="modal-footer" style="justify-content:center">
+                <button class="btn btn-secondary" onclick="closeModal('otpModal')">Close</button>
             </div>
         </div>
     </div>
@@ -95,7 +97,8 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeModal('rescheduleModal')">Cancel</button>
-                <button class="btn btn-primary" id="confirmRescheduleBtn" onclick="confirmReschedule()" disabled>Reschedule</button>
+                <button class="btn btn-primary" id="confirmRescheduleBtn" onclick="confirmReschedule()"
+                    disabled>Reschedule</button>
             </div>
         </div>
     </div>
@@ -128,7 +131,7 @@
                     allAppointments = result.data;
                     renderAppointments();
                 }
-            } catch(e) {
+            } catch (e) {
                 document.getElementById('appointmentList').innerHTML =
                     '<div class="empty-state"><p>Failed to load appointments</p></div>';
             }
@@ -164,7 +167,7 @@
                 const month = date.toLocaleString('default', { month: 'short' });
                 const canCancel = ['scheduled', 'rescheduled'].includes(a.status);
                 const canReschedule = ['emergency_cancelled', 'scheduled'].includes(a.status);
-                const canOTP = a.status === 'scheduled' || a.status === 'rescheduled';
+                const isActive = a.status === 'scheduled' || a.status === 'rescheduled';
 
                 return `
                     <div class="appointment-item" style="flex-wrap:wrap;gap:12px">
@@ -182,7 +185,7 @@
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                             <span class="status-badge status-${a.status}">${a.status.replace('_', ' ')}</span>
-                            ${canOTP ? `<button class="btn btn-sm btn-success" onclick="openOTP(${a.id})">🔒 OTP</button>` : ''}
+                            ${isActive ? `<button class="btn btn-sm btn-success" onclick="viewOTP(${a.id})">🔐 View OTP</button>` : ''}
                             ${canReschedule ? `<button class="btn btn-sm btn-warning" onclick="openReschedule(${a.id}, ${a.doctor_id})">📅 Reschedule</button>` : ''}
                             ${canCancel ? `<button class="btn btn-sm btn-danger" onclick="cancelAppointment(${a.id})">Cancel</button>` : ''}
                         </div>
@@ -202,61 +205,38 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Failed to cancel', 'error');
             }
         }
 
-        function openOTP(aptId) {
-            activeAptId = aptId;
-            document.getElementById('otpError').classList.add('hidden');
-            document.getElementById('otpDisplay').textContent = '';
-            document.querySelectorAll('#otpInputs input').forEach(i => i.value = '');
+        async function viewOTP(aptId) {
+            document.getElementById('otpDisplay').innerHTML = '<div class="spinner"></div>';
             document.getElementById('otpModal').classList.remove('hidden');
-        }
 
-        async function generateOTP() {
             try {
-                const result = await API.post(`/api/appointments/${activeAptId}/otp/generate`);
-                if (result.success) {
+                const result = await API.get(`/api/appointments/${aptId}/otp/status`);
+                if (result.success && result.data && result.data.otp_code) {
+                    const digits = result.data.otp_code.split('');
+                    document.getElementById('otpDisplay').innerHTML = `
+                        <div style="display:flex;justify-content:center;gap:10px;margin:12px 0">
+                            ${digits.map(d => `
+                                <div style="width:48px;height:56px;display:flex;align-items:center;justify-content:center;
+                                    font-size:1.5rem;font-weight:700;color:#1e293b;background:#f0f9ff;
+                                    border:2px solid #2563eb;border-radius:12px">${d}</div>
+                            `).join('')}
+                        </div>
+                        <p style="font-size:0.8rem;color:var(--text-light);margin-top:4px">
+                            Expires: ${new Date(result.data.expires_at).toLocaleString()}
+                        </p>
+                    `;
+                } else {
                     document.getElementById('otpDisplay').innerHTML =
-                        `<strong>Your OTP: ${result.data.otp}</strong><br><span style="font-size:0.75rem">Valid for 10 minutes. In production, this would be sent via SMS/email.</span>`;
-                    showToast('OTP generated', 'success');
-                } else {
-                    showToast(result.message, 'error');
+                        '<p style="color:var(--danger)">No OTP found for this appointment. Please contact support.</p>';
                 }
-            } catch(e) {
-                showToast('Failed to generate OTP', 'error');
-            }
-        }
-
-        async function verifyOTP() {
-            const inputs = document.querySelectorAll('#otpInputs input');
-            const otp = Array.from(inputs).map(i => i.value).join('');
-            if (otp.length !== 6) {
-                document.getElementById('otpError').textContent = 'Please enter full 6-digit OTP';
-                document.getElementById('otpError').classList.remove('hidden');
-                return;
-            }
-
-            try {
-                const result = await API.post(`/api/appointments/${activeAptId}/otp/verify`, { otp: otp });
-                if (result.success) {
-                    closeModal('otpModal');
-                    showToast('OTP verified! Consultation access granted.', 'success');
-                    loadAppointments();
-                } else {
-                    document.getElementById('otpError').textContent = result.message;
-                    document.getElementById('otpError').classList.remove('hidden');
-                }
-            } catch(e) {
-                showToast('Verification failed', 'error');
-            }
-        }
-
-        function otpNext(el, idx) {
-            if (el.value && idx < 6) {
-                el.nextElementSibling?.focus();
+            } catch (e) {
+                document.getElementById('otpDisplay').innerHTML =
+                    '<p style="color:var(--danger)">Failed to load OTP. Please try again.</p>';
             }
         }
 
@@ -290,7 +270,7 @@
                         `).join('');
                     }
                 }
-            } catch(e) {
+            } catch (e) {
                 slotsEl.innerHTML = '<p style="color:var(--danger);grid-column:1/-1">Failed to load slots</p>';
             }
         }
@@ -320,7 +300,7 @@
                 } else {
                     showToast(result.message, 'error');
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast('Rescheduling failed', 'error');
             }
 
@@ -333,4 +313,5 @@
         }
     </script>
 </body>
+
 </html>

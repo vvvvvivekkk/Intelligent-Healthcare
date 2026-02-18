@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS doctors (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Admins table (Strict access, max 2 accounts enforced by logic)
+CREATE TABLE IF NOT EXISTS admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Slots table
 CREATE TABLE IF NOT EXISTS slots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,41 +62,56 @@ CREATE TABLE IF NOT EXISTS appointments (
     patient_id INTEGER NOT NULL,
     doctor_id INTEGER NOT NULL,
     slot_id INTEGER NOT NULL,
-    status TEXT DEFAULT 'scheduled' CHECK(status IN (
-        'scheduled', 'completed', 'cancelled',
-        'emergency_cancelled', 'rescheduled', 'otp_pending'
-    )),
     reason TEXT,
-    notes TEXT,
+    status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'completed', 'cancelled', 'emergency_cancelled', 'rescheduled', 'otp_pending')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-    FOREIGN KEY (slot_id) REFERENCES slots(id) ON DELETE CASCADE
+    FOREIGN KEY (patient_id) REFERENCES users(id),
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id),
+    FOREIGN KEY (slot_id) REFERENCES slots(id)
 );
 
--- Chat history table
+-- Chat History table
 CREATE TABLE IF NOT EXISTS chat_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     session_id TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+    role TEXT CHECK(role IN ('user', 'assistant', 'system')),
     message TEXT NOT NULL,
     metadata TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Disease-specialization mapping
-CREATE TABLE IF NOT EXISTS disease_specialization_mapping (
+-- Notifications table
+CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    disease TEXT NOT NULL,
-    specialization TEXT NOT NULL,
-    description TEXT,
-    UNIQUE(disease, specialization)
+    recipient_type TEXT CHECK(recipient_type IN ('patient', 'doctor')),
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read INTEGER DEFAULT 0,
+    notification_type TEXT DEFAULT 'general',
+    appointment_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- OTP verification table
+-- Diseases table (for knowledge base)
+CREATE TABLE IF NOT EXISTS diseases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    symptoms TEXT,
+    treatment TEXT
+);
+
+-- Disease-Specialization Mapping
+CREATE TABLE IF NOT EXISTS disease_specialization_mapping (
+    disease TEXT NOT NULL,
+    specialization TEXT NOT NULL,
+    PRIMARY KEY (disease, specialization)
+);
+
+-- OTP Verification Table
 CREATE TABLE IF NOT EXISTS otp_verification (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     appointment_id INTEGER NOT NULL,
@@ -98,37 +121,3 @@ CREATE TABLE IF NOT EXISTS otp_verification (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
 );
-
--- Notifications table
-CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    doctor_id INTEGER,
-    recipient_type TEXT NOT NULL CHECK(recipient_type IN ('patient', 'doctor')),
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    notification_type TEXT DEFAULT 'info' CHECK(notification_type IN (
-        'info', 'reminder', 'cancellation', 'emergency', 'otp', 'booking'
-    )),
-    is_read INTEGER DEFAULT 0,
-    related_appointment_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL,
-    FOREIGN KEY (related_appointment_id) REFERENCES appointments(id) ON DELETE SET NULL
-);
-
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_patient_id ON users(patient_id);
-CREATE INDEX IF NOT EXISTS idx_doctors_email ON doctors(email);
-CREATE INDEX IF NOT EXISTS idx_doctors_specialization ON doctors(specialization);
-CREATE INDEX IF NOT EXISTS idx_slots_doctor_date ON slots(doctor_id, slot_date);
-CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
-CREATE INDEX IF NOT EXISTS idx_appointments_doctor ON appointments(doctor_id);
-CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
-CREATE INDEX IF NOT EXISTS idx_chat_history_user ON chat_history(user_id);
-CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_doctor ON notifications(doctor_id);
-CREATE INDEX IF NOT EXISTS idx_otp_appointment ON otp_verification(appointment_id);
