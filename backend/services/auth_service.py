@@ -131,3 +131,53 @@ class AuthService:
             (doctor_id,), one=True
         )
         return dict(doctor) if doctor else None
+
+    @staticmethod
+    def create_admin(username, password):
+        """Create a new admin (internal usage only). Limits to 2 admins."""
+        # Check admin count
+        count = query_db('SELECT COUNT(*) as c FROM admins', one=True)
+        if count and count['c'] >= 2:
+            return None, 'Admin limit reached (max 2)'
+
+        existing = query_db('SELECT id FROM admins WHERE username = ?', (username,), one=True)
+        if existing:
+            return None, 'Username taken'
+
+        password_hash = generate_password_hash(password)
+        try:
+            admin_id = execute_db(
+                'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
+                (username, password_hash)
+            )
+            return admin_id, None
+        except Exception as e:
+            logger.error(f"Admin creation error: {e}")
+            return None, 'Creation failed'
+
+    @staticmethod
+    def login_admin(username, password):
+        """Authenticate an admin."""
+        # Use case-insensitive username match if desired, but sticking to exact match for security
+        admin = query_db('SELECT * FROM admins WHERE username = ?', (username,), one=True)
+        
+        if not admin:
+            logger.warning(f"Admin login failed: User '{username}' not found")
+            return None, 'Invalid credentials'
+        
+        if not check_password_hash(admin['password_hash'], password):
+            logger.warning(f"Admin login failed: Password mismatch for '{username}'")
+            return None, 'Invalid credentials'
+
+        logger.info(f"Admin '{username}' logged in successfully")
+        return {
+            'id': admin['id'],
+            'username': admin['username'],
+            'role': 'admin'
+        }, None
+
+    @staticmethod
+    def get_admin_by_id(admin_id):
+        """Get admin details."""
+        admin = query_db('SELECT id, username, created_at FROM admins WHERE id = ?', (admin_id,), one=True)
+        return dict(admin) if admin else None

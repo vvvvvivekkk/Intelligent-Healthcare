@@ -13,6 +13,7 @@ from backend.blueprints.auth import auth_bp
 from backend.blueprints.doctors import doctors_bp
 from backend.blueprints.appointments import appointments_bp
 from backend.blueprints.chatbot import chatbot_bp
+from backend.blueprints.admin import admin_bp
 
 # Configure logging
 logging.basicConfig(
@@ -38,11 +39,32 @@ def create_app():
     app.register_blueprint(doctors_bp)
     app.register_blueprint(appointments_bp)
     app.register_blueprint(chatbot_bp)
+    app.register_blueprint(admin_bp)
 
     # Initialize database
     with app.app_context():
         init_db()
         logger.info("Database initialized")
+
+        # Auto-seed admin accounts if none exist, or fix password hashes
+        try:
+            from backend.utils.database import query_db, execute_db
+            from werkzeug.security import generate_password_hash, check_password_hash
+            admin = query_db('SELECT * FROM admins WHERE username = ?', ('admin',), one=True)
+            if not admin:
+                pwd = generate_password_hash('admin123')
+                execute_db('INSERT INTO admins (username, password_hash) VALUES (?, ?)', ('admin', pwd))
+                logger.info("Default admin account created (admin/admin123)")
+            else:
+                # Verify hash is valid - fix if corrupted or incompatible
+                if not check_password_hash(admin['password_hash'], 'admin123'):
+                    pwd = generate_password_hash('admin123')
+                    execute_db('UPDATE admins SET password_hash = ? WHERE id = ?', (pwd, admin['id']))
+                    logger.info("Admin password hash was invalid - reset to admin123")
+                else:
+                    logger.info("Admin account verified OK")
+        except Exception as e:
+            logger.error(f"Admin seed error: {e}")
 
     # ─── Error Handlers ──────────────────────────────────────
 
@@ -100,6 +122,14 @@ def create_app():
     @app.route('/doctors/browse')
     def browse_doctors():
         return send_from_directory('frontend/pages', 'browse_doctors.html')
+
+    @app.route('/admin/login')
+    def admin_login():
+        return send_from_directory('frontend/pages', 'admin_login.html')
+
+    @app.route('/admin/dashboard')
+    def admin_dashboard():
+        return send_from_directory('frontend/pages', 'admin_dashboard.html')
 
     # Health check
     @app.route('/api/health')

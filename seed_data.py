@@ -12,10 +12,16 @@ def seed():
     print("Initializing database...")
     init_db()
 
-    # Check if already seeded
+    # Seed Admins (New Feature)
+    print("Seeding admins...")
+    from backend.services.auth_service import AuthService
+    AuthService.create_admin('admin', 'admin123')
+    AuthService.create_admin('sysadmin', 'secureStrong!23')
+
+    # Check if doctors seeded
     existing = query_db('SELECT COUNT(*) as c FROM doctors', one=True)
     if existing and existing['c'] > 0:
-        print("Database already seeded. Skipping.")
+        print("Doctor data already seeded. Skipping doctors.")
         return
 
     print("Seeding doctors...")

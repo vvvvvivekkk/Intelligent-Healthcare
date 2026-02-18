@@ -56,7 +56,16 @@ Open **http://localhost:5000** in your browser.
 
 ## Test Credentials
 
-> **Note:** There is no separate admin role. The system has **Patient** and **Doctor** portals only. Doctors are auto-verified via seed data.
+> **Note:** The system uses strict role-based access control (RBAC) for Patients, Doctors, and Admins.
+
+### 🛡️ Admin Account (Max 2 Allowed)
+
+| Username | Password       | Role        |
+|----------|----------------|-------------|
+| admin    | admin123       | Admin       |
+| sysadmin | secureStrong!23| System Admin|
+
+**Login at:** [http://localhost:5000/admin/login](http://localhost:5000/admin/login)
 
 ### 🧑‍🤒 Patient Account
 
@@ -160,4 +169,4 @@ healthcare/
 - `POST /new-session` – Start new chat
 - `GET /history` – Chat history
 - `GET /sessions` – All sessions
-"# Intelligent-Healthcare" 
+"# Intelligent-Healthcare"
