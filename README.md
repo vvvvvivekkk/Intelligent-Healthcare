@@ -170,3 +170,5 @@ healthcare/
 - `GET /history` – Chat history
 - `GET /sessions` – All sessions
 "# Intelligent-Healthcare"
+
+
