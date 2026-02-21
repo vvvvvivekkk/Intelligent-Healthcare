@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify – MedSync AI</title>
+    <!-- Use same style as other pages -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="logo">
+                <svg width="48" height="48" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M16 8v16M8 16h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+                <h1>Verify Account</h1>
+                <p>Enter the verification code sent to your email</p>
+            </div>
+            <form id="verifyForm" onsubmit="return false">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="email" readonly required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Verification Code (OTP)</label>
+                    <input type="text" class="form-input" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" pattern="\d{6}" required style="letter-spacing: 0.5em; font-family: monospace; text-align: center;">
+                </div>
+                <div id="verifyError" class="form-error mb-2 hidden"></div>
+                <div id="verifySuccess" class="form-success mb-2 hidden" style="color: green;"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%" id="verifyBtn">Verify Account</button>
+            </form>
+            <div class="auth-footer">
+                <a href="/login" style="font-size:0.9rem">Back to Login</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Minimal JS to handle verification -->
+    <script>
+        const form = document.getElementById('verifyForm');
+        const emailInput = document.getElementById('email');
+        const otpInput = document.getElementById('otp');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const errorDiv = document.getElementById('verifyError');
+        const successDiv = document.getElementById('verifySuccess');
+
+        // Extract email from query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const email = urlParams.get('email');
+        if (email) {
+            emailInput.value = email;
+        } else {
+            errorDiv.textContent = 'Email missing from link. Please return to login and try again.';
+            errorDiv.classList.remove('hidden');
+            verifyBtn.disabled = true;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verifying...';
+
+            try {
+                const response = await fetch('/api/auth/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: emailInput.value,
+                        otp: otpInput.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && (data.success || data.message === 'Verification successful.')) {
+                    successDiv.textContent = data.message || 'Verification successful!';
+                    successDiv.classList.remove('hidden');
+                    verifyBtn.textContent = 'Verified!';
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || 'Verification failed');
+                }
+            } catch (err) {
+                console.error(err);
+                errorDiv.textContent = err.message;
+                errorDiv.classList.remove('hidden');
+                verifyBtn.textContent = 'Verify Account';
+                verifyBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

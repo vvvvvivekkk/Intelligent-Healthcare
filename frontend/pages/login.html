@@ -48,19 +48,32 @@
             loginBtn.textContent = 'Signing in...';
 
             try {
-                const result = await API.post('/api/auth/login/patient', {
-                    email: emailInput.value,
-                    password: passwordInput.value
+                const res = await fetch('/api/auth/login/patient', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        email: emailInput.value.trim(),
+                        password: passwordInput.value
+                    })
                 });
+                let result = {};
+                try {
+                    const text = await res.text();
+                    result = text ? JSON.parse(text) : {};
+                } catch (_) {
+                    result = { success: false, message: res.status === 500 ? 'Server error. Check server logs.' : 'Login failed.' };
+                }
 
                 if (result.success) {
                     window.location.href = '/patient/dashboard';
-                } else {
-                    errorDiv.textContent = result.message;
-                    errorDiv.classList.remove('hidden');
+                    return;
                 }
+                const msg = result.message || (res.status === 401 ? 'Invalid email or password.' : (res.status === 500 ? 'Server error. Try again or reset password (see README).' : 'Login failed. Please try again.'));
+                errorDiv.textContent = msg;
+                errorDiv.classList.remove('hidden');
             } catch (err) {
-                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.textContent = 'Login failed. Check your connection and try again.';
                 errorDiv.classList.remove('hidden');
             }
 

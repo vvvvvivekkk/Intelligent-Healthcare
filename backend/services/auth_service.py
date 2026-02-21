@@ -20,20 +20,23 @@ class AuthService:
         return f"DOC-{uuid.uuid4().hex[:8].upper()}"
 
     @staticmethod
-    def register_patient(full_name, email, password, phone=None):
-        """Register a new patient."""
-        existing = query_db('SELECT id FROM users WHERE email = ?', (email,), one=True)
+    def register_patient(full_name, email, password, phone=None, is_verified=False):
+        """Register a new patient. Use is_verified=True when email was already verified via OTP."""
+        existing = query_db('SELECT id, is_verified, patient_id, full_name, email, phone, role FROM users WHERE email = ?', (email,), one=True)
         if existing:
+            if not existing['is_verified']:
+                return None, 'Email already registered but not verified. Please verify your email or use a different address.'
             return None, 'Email already registered'
 
         patient_id = AuthService.generate_patient_id()
         password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        verified_int = 1 if is_verified else 0
 
         try:
             user_id = execute_db(
-                '''INSERT INTO users (patient_id, full_name, email, phone, password_hash, role)
-                   VALUES (?, ?, ?, ?, ?, 'patient')''',
-                (patient_id, full_name, email, phone, password_hash)
+                '''INSERT INTO users (patient_id, full_name, email, phone, password_hash, role, is_verified)
+                   VALUES (?, ?, ?, ?, ?, 'patient', ?)''',
+                (patient_id, full_name, email, phone, password_hash, verified_int)
             )
             user = query_db('SELECT id, patient_id, full_name, email, phone, role FROM users WHERE id = ?',
                            (user_id,), one=True)
@@ -45,11 +48,38 @@ class AuthService:
     @staticmethod
     def login_patient(email, password):
         """Authenticate a patient."""
-        user = query_db('SELECT * FROM users WHERE email = ?', (email,), one=True)
-        if not user:
+        email = (email or '').strip().lower()
+        if not email:
+            logger.debug("Login: empty email")
             return None, 'Invalid email or password'
-        if not check_password_hash(user['password_hash'], password):
+        if not (password or password.strip()):
+            logger.debug("Login: empty password")
             return None, 'Invalid email or password'
+
+        user_row = query_db('SELECT * FROM users WHERE email = ?', (email,), one=True)
+        if not user_row:
+            logger.info("Login failed: no user for email %s", email)
+            return None, 'Invalid email or password'
+
+        # sqlite3.Row does not support .get(); convert to dict
+        user = dict(user_row)
+        pwh = user.get('password_hash')
+        if not pwh:
+            logger.warning("Login: user %s has no password_hash", email)
+            return None, 'Invalid email or password'
+        try:
+            if not check_password_hash(pwh, password):
+                logger.info("Login failed: wrong password for %s", email)
+                return None, 'Invalid email or password'
+        except Exception as e:
+            logger.exception("Login: check_password_hash failed for %s: %s", email, e)
+            return None, 'Invalid email or password'
+
+        # Treat is_verified as truthy (SQLite may return 0/1 as int)
+        is_verified = user.get('is_verified') in (1, True, '1')
+        if not is_verified:
+            logger.info("Login failed: account not verified for %s", email)
+            return None, 'Account not verified. Please check your email.'
 
         return {
             'id': user['id'],

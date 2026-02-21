@@ -14,6 +14,7 @@ from backend.blueprints.doctors import doctors_bp
 from backend.blueprints.appointments import appointments_bp
 from backend.blueprints.chatbot import chatbot_bp
 from backend.blueprints.admin import admin_bp
+from backend import mail
 
 # Configure logging
 logging.basicConfig(
@@ -33,6 +34,10 @@ def create_app():
     config = get_config()
     app.config.from_object(config)
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
+
+    mail.init_app(app)
+    if not (app.config.get("MAIL_USERNAME") and app.config.get("MAIL_PASSWORD")):
+        logger.warning("Email not configured: set GMAIL_SENDER and GMAIL_PASSWORD in .env to send OTP/verification emails")
 
     # Register blueprints
     app.register_blueprint(auth_bp)
@@ -94,6 +99,10 @@ def create_app():
     @app.route('/register')
     def register_page():
         return send_from_directory('frontend/pages', 'register.html')
+
+    @app.route('/verify-otp')
+    def verify_otp_page():
+        return send_from_directory('frontend/pages', 'verify_otp.html')
 
     @app.route('/patient/dashboard')
     def patient_dashboard():

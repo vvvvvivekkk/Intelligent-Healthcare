@@ -103,29 +103,23 @@ def book_appointment():
     if err:
         return error_response(err)
 
-    # Send booking notifications
+    # Create consultation OTP at booking time (valid 24 hours so patient can view before/during consultation)
+    apt_id = appointment.get('id')
+    if apt_id:
+        otp_code = OTPService.create_otp(apt_id, expiry_minutes=24 * 60, update_status=False)
+        NotificationService.create_notification(
+            recipient_type='patient',
+            title='Consultation OTP',
+            message=f'Your consultation OTP is: {otp_code}. Share it with your doctor during the visit. Valid 24 hours.',
+            notification_type='otp',
+            user_id=session['user_id'],
+            appointment_id=apt_id
+        )
+
+    # Send notifications
     NotificationService.send_booking_notification(
         appointment, session['user_id'], appointment['doctor_id']
     )
-
-    # Auto-generate OTP at booking time (valid for 24 hours)
-    otp_code = OTPService.create_otp(
-        appointment['id'], expiry_minutes=1440, update_status=False
-    )
-    # Notify patient with the OTP
-    NotificationService.create_notification(
-        recipient_type='patient',
-        title='🔐 Consultation OTP',
-        message=f"Your verification OTP for appointment on "
-                f"{appointment.get('slot_date', '')} at {appointment.get('start_time', '')} "
-                f"is: {otp_code}. Share this with your doctor during consultation to verify and complete the appointment.",
-        notification_type='otp',
-        user_id=session['user_id'],
-        appointment_id=appointment['id']
-    )
-
-    # Include OTP in the response for immediate display
-    appointment['otp_code'] = otp_code
 
     return success_response(appointment, 'Appointment booked successfully', 201)
 
@@ -171,27 +165,16 @@ def emergency_cancel(appointment_id):
 
 
 @appointments_bp.route('/<int:appointment_id>/reschedule', methods=['POST'])
-@login_required
+@patient_required
 def reschedule_appointment(appointment_id):
-    """Reschedule an appointment (by patient or doctor)."""
+    """Reschedule an appointment."""
     data = request.get_json()
     valid, msg = validate_required_fields(data, ['new_slot_id'])
     if not valid:
         return error_response(msg)
 
-    # Resolve the patient_id depending on who is rescheduling
-    role = session.get('role')
-    if role == 'doctor':
-        # Doctor rescheduling — look up the appointment to get the patient_id
-        apt = AppointmentService.get_appointment_by_id(appointment_id)
-        if not apt:
-            return error_response('Appointment not found', 404)
-        patient_id = apt['patient_id']
-    else:
-        patient_id = session['user_id']
-
     appointment, err = AppointmentService.reschedule_appointment(
-        appointment_id, data['new_slot_id'], patient_id
+        appointment_id, data['new_slot_id'], session['user_id']
     )
 
     if err:
@@ -229,7 +212,7 @@ def get_appointment(appointment_id):
     return success_response(apt)
 
 
-@appointments_bp.route('/<int:appointment_id>/status', methods=['POST', 'PUT'])
+@appointments_bp.route('/<int:appointment_id>/status', methods=['PUT'])
 @doctor_required
 def update_status(appointment_id):
     """Update appointment status (doctor only)."""
@@ -245,16 +228,6 @@ def update_status(appointment_id):
 
 
 # ─── OTP Management ──────────────────────────────────────────
-
-@appointments_bp.route('/<int:appointment_id>/otp/status', methods=['GET'])
-@login_required
-def get_otp_status(appointment_id):
-    """Get OTP status and code for an appointment (patient views their OTP)."""
-    status = OTPService.get_otp_status(appointment_id)
-    if not status:
-        return error_response('No OTP found for this appointment', 404)
-    return success_response(status)
-
 
 @appointments_bp.route('/<int:appointment_id>/otp/generate', methods=['POST'])
 @login_required
@@ -293,6 +266,34 @@ def verify_otp(appointment_id):
         return error_response(msg)
 
     return success_response(message=msg)
+
+
+@appointments_bp.route('/<int:appointment_id>/otp/status', methods=['GET'])
+@login_required
+def get_otp_status(appointment_id):
+    """Get OTP for an appointment (patient can view consultation OTP)."""
+    apt = AppointmentService.get_appointment_by_id(appointment_id)
+    if not apt:
+        return error_response('Appointment not found', 404)
+    # Patient can only view OTP for their own appointment
+    if session.get('role') == 'patient' and apt.get('patient_id') != session.get('user_id'):
+        return error_response('Not authorized to view this appointment', 403)
+    data = OTPService.get_otp_status(appointment_id)
+    # If no OTP yet (e.g. appointment booked before OTP-at-booking was added), generate one now
+    if not data and apt.get('status') in ('scheduled', 'otp_pending'):
+        otp_code = OTPService.create_otp(appointment_id, expiry_minutes=24 * 60, update_status=False)
+        NotificationService.create_notification(
+            recipient_type='patient',
+            title='Consultation OTP',
+            message=f'Your consultation OTP is: {otp_code}. Share it with your doctor. Valid 24 hours.',
+            notification_type='otp',
+            user_id=apt['patient_id'],
+            appointment_id=appointment_id
+        )
+        data = OTPService.get_otp_status(appointment_id)
+    if not data:
+        return error_response('No OTP found for this appointment. Please contact support.', 404)
+    return success_response(data)
 
 
 # ─── Notifications ────────────────────────────────────────────

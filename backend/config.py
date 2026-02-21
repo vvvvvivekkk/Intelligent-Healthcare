@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root so GMAIL_SENDER / GMAIL_PASSWORD are found
+_project_root = Path(__file__).resolve().parent.parent
+load_dotenv(_project_root / ".env")
 
 
 class Config:
@@ -16,6 +19,17 @@ class Config:
     OTP_EXPIRY_MINUTES = 10
     MAX_API_RETRIES = 3
     API_RETRY_DELAY = 2
+
+    # Email Config
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.getenv('GMAIL_SENDER')
+    MAIL_PASSWORD = os.getenv('GMAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.getenv('GMAIL_SENDER')
+    MAIL_VERIFICATION_TIMEOUT = int(os.getenv('MAIL_VERIFICATION_TIMEOUT', 24))
+    # If True, when email send fails in development, OTP is printed to server console so you can still test
+    MAIL_DEBUG_OTP_TO_CONSOLE = os.getenv('MAIL_DEBUG_OTP_TO_CONSOLE', '').lower() in ('true', '1', 'yes')
 
 
 class DevelopmentConfig(Config):

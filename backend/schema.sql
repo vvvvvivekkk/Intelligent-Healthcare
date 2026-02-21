@@ -12,8 +12,21 @@ CREATE TABLE IF NOT EXISTS users (
     phone TEXT,
     password_hash TEXT NOT NULL,
     role TEXT DEFAULT 'patient' CHECK(role IN ('patient', 'admin')),
+    is_verified INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Account Verification table
+CREATE TABLE IF NOT EXISTS account_verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE,
+    otp_code TEXT,
+    expires_at TIMESTAMP,
+    attempts INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Doctors table
@@ -111,7 +124,7 @@ CREATE TABLE IF NOT EXISTS disease_specialization_mapping (
     PRIMARY KEY (disease, specialization)
 );
 
--- OTP Verification Table
+-- OTP Verification Table (for appointments)
 CREATE TABLE IF NOT EXISTS otp_verification (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     appointment_id INTEGER NOT NULL,
@@ -121,3 +134,17 @@ CREATE TABLE IF NOT EXISTS otp_verification (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
 );
+
+-- Registration OTP: pre-account email verification (OTP sent before user is created)
+-- OTP is stored hashed; 5 min expiry; max 3 attempts; verified_at set on success
+CREATE TABLE IF NOT EXISTS registration_otp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    verified_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_registration_otp_email ON registration_otp(email);
+CREATE INDEX IF NOT EXISTS idx_registration_otp_expires ON registration_otp(expires_at);

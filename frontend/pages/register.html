@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register – MedSync AI</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .form-group .input-with-btn { display: flex; gap: 8px; align-items: flex-start; }
+        .form-group .input-with-btn .form-input { flex: 1; }
+        .form-group .input-with-btn .btn { flex-shrink: 0; white-space: nowrap; }
+        .otp-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; }
+        .otp-section.hidden { display: none; }
+        .form-input:disabled, input[readonly] { background: #f3f4f6; cursor: not-allowed; }
+        .form-success { color: #059669; font-size: 0.9rem; }
+        .btn-link { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0; font-size: inherit; text-decoration: underline; }
+        .btn-link:hover { color: #1d4ed8; }
+        .btn-link:disabled { color: #9ca3af; cursor: not-allowed; text-decoration: none; }
+    </style>
 </head>
 <body>
     <div class="auth-wrapper">
@@ -21,7 +33,23 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Email</label>
-                    <input type="email" class="form-input" id="email" placeholder="Enter your email" required>
+                    <div class="input-with-btn">
+                        <input type="email" class="form-input" id="email" placeholder="Enter your email" required>
+                        <button type="button" class="btn btn-secondary" id="verifyEmailBtn">Verify Email</button>
+                    </div>
+                </div>
+                <div id="otpSection" class="otp-section hidden">
+                    <div class="form-group">
+                        <label class="form-label">Verification Code (6 digits)</label>
+                        <input type="text" class="form-input" id="otp" placeholder="Enter code from email" maxlength="6" pattern="[0-9]*" inputmode="numeric" style="letter-spacing: 0.5em; font-family: monospace; text-align: center;">
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-secondary" id="verifyOtpBtn" style="width:100%">Verify OTP</button>
+                        <p style="margin-top: 8px; font-size: 0.9rem;">
+                            Didn't get the code? <button type="button" class="btn-link" id="resendOtpBtn">Resend code</button>
+                        </p>
+                    </div>
+                    <p class="form-success hidden" id="emailVerifiedMsg">✓ Email verified. Set your password below.</p>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Phone (optional)</label>
@@ -29,14 +57,14 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Password</label>
-                    <input type="password" class="form-input" id="password" placeholder="Min 6 characters" required minlength="6">
+                    <input type="password" class="form-input" id="password" placeholder="Min 6 characters" required minlength="6" disabled>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Confirm Password</label>
-                    <input type="password" class="form-input" id="confirmPassword" placeholder="Confirm your password" required>
+                    <input type="password" class="form-input" id="confirmPassword" placeholder="Confirm your password" required disabled>
                 </div>
                 <div id="regError" class="form-error mb-2 hidden"></div>
-                <button type="submit" class="btn btn-primary" style="width:100%" id="regBtn">Create Account</button>
+                <button type="submit" class="btn btn-primary" style="width:100%" id="regBtn" disabled>Create Account</button>
             </form>
             <div class="auth-footer">
                 Already have an account? <a href="/login">Sign in</a>
@@ -50,17 +78,139 @@
         const form = document.getElementById('registerForm');
         const errorDiv = document.getElementById('regError');
         const regBtn = document.getElementById('regBtn');
+        const emailInput = document.getElementById('email');
+        const verifyEmailBtn = document.getElementById('verifyEmailBtn');
+        const otpSection = document.getElementById('otpSection');
+        const otpInput = document.getElementById('otp');
+        const verifyOtpBtn = document.getElementById('verifyOtpBtn');
+        const emailVerifiedMsg = document.getElementById('emailVerifiedMsg');
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const resendOtpBtn = document.getElementById('resendOtpBtn');
+
+        let emailVerified = false;
+
+        emailInput.addEventListener('change', () => {
+            if (emailVerified) {
+                emailVerified = false;
+                passwordInput.disabled = true;
+                confirmPasswordInput.disabled = true;
+                regBtn.disabled = true;
+                emailVerifiedMsg.classList.add('hidden');
+            }
+        });
+
+        function setError(msg) {
+            errorDiv.textContent = msg || '';
+            errorDiv.classList.toggle('hidden', !msg);
+        }
+
+        function enablePasswordStep() {
+            emailVerified = true;
+            passwordInput.disabled = false;
+            confirmPasswordInput.disabled = false;
+            regBtn.disabled = false;
+            emailVerifiedMsg.classList.remove('hidden');
+            otpInput.disabled = true;
+            verifyOtpBtn.disabled = true;
+        }
+
+        verifyEmailBtn.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            if (!email) {
+                setError('Please enter your email address.');
+                return;
+            }
+            setError('');
+            verifyEmailBtn.disabled = true;
+            verifyEmailBtn.textContent = 'Sending...';
+            try {
+                const result = await API.post('/api/auth/send-registration-otp', { email });
+                if (result.success) {
+                    otpSection.classList.remove('hidden');
+                    otpInput.value = '';
+                    otpInput.focus();
+                    showToast(result.message || 'Verification code sent. Check your email.', 'success', 6000);
+                } else {
+                    let msg = result.message || 'Failed to send code.';
+                    if (msg.toLowerCase().includes('app password') || msg.toLowerCase().includes('credentials')) {
+                        msg += ' Get an App Password: Google Account → Security → 2-Step Verification → App passwords. Then set GMAIL_PASSWORD in .env and restart the app.';
+                    }
+                    setError(msg);
+                }
+            } catch (err) {
+                setError('Failed to send verification code. Please try again.');
+            }
+            verifyEmailBtn.disabled = false;
+            verifyEmailBtn.textContent = 'Verify Email';
+        });
+
+        verifyOtpBtn.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            const otp = otpInput.value.trim();
+            if (!email || !otp) {
+                setError('Please enter the 6-digit code from your email.');
+                return;
+            }
+            if (otp.length !== 6) {
+                setError('Please enter the full 6-digit code.');
+                return;
+            }
+            setError('');
+            verifyOtpBtn.disabled = true;
+            verifyOtpBtn.textContent = 'Verifying...';
+            try {
+                const result = await API.post('/api/auth/verify-registration-otp', { email, otp });
+                if (result.success) {
+                    enablePasswordStep();
+                    showToast(result.message || 'Email verified.', 'success');
+                } else {
+                    setError(result.message || 'Invalid or expired code.');
+                    verifyOtpBtn.disabled = false;
+                    verifyOtpBtn.textContent = 'Verify OTP';
+                }
+            } catch (err) {
+                setError('Verification failed. Please try again.');
+                verifyOtpBtn.disabled = false;
+                verifyOtpBtn.textContent = 'Verify OTP';
+            }
+        });
+
+        async function resendOtp() {
+            const email = emailInput.value.trim();
+            if (!email) return;
+            resendOtpBtn.disabled = true;
+            setError('');
+            try {
+                const result = await API.post('/api/auth/send-registration-otp', { email });
+                if (result.success) {
+                    otpInput.value = '';
+                    otpInput.focus();
+                    showToast(result.message || 'New code sent. Check your email.', 'success', 6000);
+                } else {
+                    setError(result.message || 'Failed to resend code.');
+                }
+            } catch (err) {
+                setError('Failed to resend code. Please try again.');
+            }
+            resendOtpBtn.disabled = false;
+        }
+
+        resendOtpBtn.addEventListener('click', resendOtp);
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            errorDiv.classList.add('hidden');
+            if (!emailVerified) {
+                setError('Please verify your email first.');
+                return;
+            }
+            setError('');
 
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
+            const password = passwordInput.value;
+            const confirmPassword = confirmPasswordInput.value;
 
             if (password !== confirmPassword) {
-                errorDiv.textContent = 'Passwords do not match';
-                errorDiv.classList.remove('hidden');
+                setError('Passwords do not match');
                 return;
             }
 
@@ -69,26 +219,33 @@
 
             try {
                 const result = await API.post('/api/auth/register/patient', {
-                    full_name: document.getElementById('fullName').value,
-                    email: document.getElementById('email').value,
-                    phone: document.getElementById('phone').value || null,
+                    full_name: document.getElementById('fullName').value.trim(),
+                    email: emailInput.value.trim(),
+                    phone: document.getElementById('phone').value.trim() || null,
                     password: password
                 });
 
                 if (result.success) {
-                    showToast('Account created successfully! Please login.', 'success');
-                    setTimeout(() => window.location.href = '/login', 1500);
+                    showToast(result.message || 'Account created. You can now sign in.', 'success', 6000);
+                    form.reset();
+                    emailVerified = false;
+                    otpSection.classList.add('hidden');
+                    emailVerifiedMsg.classList.add('hidden');
+                    passwordInput.disabled = true;
+                    confirmPasswordInput.disabled = true;
+                    regBtn.disabled = true;
+                    regBtn.textContent = 'Create Account';
+                    setTimeout(() => { window.location.href = '/login'; }, 2500);
                 } else {
-                    errorDiv.textContent = result.message;
-                    errorDiv.classList.remove('hidden');
+                    setError(result.message || 'Registration failed.');
+                    regBtn.disabled = false;
+                    regBtn.textContent = 'Create Account';
                 }
             } catch (err) {
-                errorDiv.textContent = 'Registration failed. Please try again.';
-                errorDiv.classList.remove('hidden');
+                setError('Registration failed. Please try again.');
+                regBtn.disabled = false;
+                regBtn.textContent = 'Create Account';
             }
-
-            regBtn.disabled = false;
-            regBtn.textContent = 'Create Account';
         });
     </script>
 </body>
