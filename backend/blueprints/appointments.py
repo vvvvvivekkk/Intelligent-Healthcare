@@ -103,19 +103,6 @@ def book_appointment():
     if err:
         return error_response(err)
 
-    # Create consultation OTP at booking time (valid 24 hours so patient can view before/during consultation)
-    apt_id = appointment.get('id')
-    if apt_id:
-        otp_code = OTPService.create_otp(apt_id, expiry_minutes=24 * 60, update_status=False)
-        NotificationService.create_notification(
-            recipient_type='patient',
-            title='Consultation OTP',
-            message=f'Your consultation OTP is: {otp_code}. Share it with your doctor during the visit. Valid 24 hours.',
-            notification_type='otp',
-            user_id=session['user_id'],
-            appointment_id=apt_id
-        )
-
     # Send notifications
     NotificationService.send_booking_notification(
         appointment, session['user_id'], appointment['doctor_id']
@@ -266,34 +253,6 @@ def verify_otp(appointment_id):
         return error_response(msg)
 
     return success_response(message=msg)
-
-
-@appointments_bp.route('/<int:appointment_id>/otp/status', methods=['GET'])
-@login_required
-def get_otp_status(appointment_id):
-    """Get OTP for an appointment (patient can view consultation OTP)."""
-    apt = AppointmentService.get_appointment_by_id(appointment_id)
-    if not apt:
-        return error_response('Appointment not found', 404)
-    # Patient can only view OTP for their own appointment
-    if session.get('role') == 'patient' and apt.get('patient_id') != session.get('user_id'):
-        return error_response('Not authorized to view this appointment', 403)
-    data = OTPService.get_otp_status(appointment_id)
-    # If no OTP yet (e.g. appointment booked before OTP-at-booking was added), generate one now
-    if not data and apt.get('status') in ('scheduled', 'otp_pending'):
-        otp_code = OTPService.create_otp(appointment_id, expiry_minutes=24 * 60, update_status=False)
-        NotificationService.create_notification(
-            recipient_type='patient',
-            title='Consultation OTP',
-            message=f'Your consultation OTP is: {otp_code}. Share it with your doctor. Valid 24 hours.',
-            notification_type='otp',
-            user_id=apt['patient_id'],
-            appointment_id=appointment_id
-        )
-        data = OTPService.get_otp_status(appointment_id)
-    if not data:
-        return error_response('No OTP found for this appointment. Please contact support.', 404)
-    return success_response(data)
 
 
 # ─── Notifications ────────────────────────────────────────────

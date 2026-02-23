@@ -1,0 +1,68 @@
+Functional Requirements
+FR1: User Registration & Login
+The system shall allow patients to register and log in using valid credentials (email/phone and password).
+FR2: Doctor Registration & Login
+The system shall allow doctors to register and log in with verified credentials and professional details.
+FR3: Role-Based Access
+The system shall provide separate dashboards for users (patients) and doctors based on login role.
+
+FR4: AI Chatbot Interface
+The system shall provide an AI-powered chatbot interface for users to interact with the platform.
+
+FR5: Symptom Input via Chatbot
+The chatbot shall allow users to enter symptoms in natural language (text-based conversation).
+
+FR6: AI-Based Disease Recommendation
+The system shall analyze user symptoms using LLM and recommend possible diseases or health conditions.
+
+FR7: Doctor Recommendation Based on Disease
+The system shall recommend relevant doctors/specialists from the database based on the predicted disease.
+
+FR8: Doctor Search Functionality
+The system shall allow users to search doctors by specialization, name, or disease category.
+
+FR9: Real-Time Slot Availability
+The system shall display real-time available appointment slots for selected doctors.
+
+FR10: Slot Booking via Chatbot
+The chatbot shall assist users in booking consultation slots, similar to a ticket-booking experience.
+
+FR11: Appointment Confirmation
+The system shall confirm appointments instantly and display booking details (doctor, date, time).
+
+FR12: Doctor Slot Management
+Doctors shall be able to add, update, or remove available time slots from their dashboard.
+
+FR13: Appointment Viewing
+Patients shall be able to view their upcoming and past appointments.
+
+
+Doctors shall be able to view booked patient appointments.
+
+
+
+FR14: Appointment Cancellation
+The system shall allow users and doctors to cancel appointments, updating slot availability in real time.
+
+FR15: Database Integration
+The system shall store and manage user details, doctor profiles, symptoms, disease mappings, and appointments in a centralized database.
+
+FR16: Chat History Storage
+The system shall store chatbot interaction history for user reference and system improvement.
+
+FR17: Appointment Notifications
+The system shall send an alert/notification to the patient 30 minutes before the scheduled appointment time.
+
+FR18: Emergency Rescheduling Protocol
+The system shall allow doctors to flag an emergency cancellation/delay.
+The system shall automatically notify the affected patient(s).
+The system shall prompt the patient(s) for confirmation on rescheduling the appointment.
+
+FR19: Consultation Security via OTP
+The system shall require the patient to enter a One-Time Password (OTP) immediately prior to the consultation to confirm their identity and start the session.
+
+FR20: Patient Identification System
+The system shall assign a unique, immutable Patient ID to every registered patient for identification and record management.
+
+
+
