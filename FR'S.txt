@@ -6,6 +6,7 @@ The system shall allow doctors to register and log in with verified credentials 
 FR3: Role-Based Access
 The system shall provide separate dashboards for users (patients) and doctors based on login role.
 
+
 FR4: AI Chatbot Interface
 The system shall provide an AI-powered chatbot interface for users to interact with the platform.
 
