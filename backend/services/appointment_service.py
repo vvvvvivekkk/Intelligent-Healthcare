@@ -1,5 +1,7 @@
 import uuid
 import logging
+from calendar import monthrange
+from datetime import datetime, timedelta
 from backend.utils.database import query_db, execute_db, get_db
 
 logger = logging.getLogger(__name__)
@@ -8,9 +10,154 @@ logger = logging.getLogger(__name__)
 class AppointmentService:
     """Service layer for appointment and slot management."""
 
+    WEEKDAY_MAP = {
+        0: 'monday',
+        1: 'tuesday',
+        2: 'wednesday',
+        3: 'thursday',
+        4: 'friday',
+        5: 'saturday',
+        6: 'sunday',
+    }
+
     @staticmethod
     def generate_appointment_id():
         return f"APT-{uuid.uuid4().hex[:8].upper()}"
+
+    @staticmethod
+    def _parse_date(date_str):
+        return datetime.strptime(date_str, '%Y-%m-%d')
+
+    @staticmethod
+    def _parse_time(time_str):
+        return datetime.strptime(time_str, '%H:%M').time()
+
+    @staticmethod
+    def _month_bounds(reference_date):
+        last_day = monthrange(reference_date.year, reference_date.month)[1]
+        month_start = datetime(reference_date.year, reference_date.month, 1)
+        month_end = datetime(reference_date.year, reference_date.month, last_day)
+        return month_start, month_end
+
+    @staticmethod
+    def _month_bounds_from_key(month_key):
+        reference = datetime.strptime(f"{month_key}-01", '%Y-%m-%d')
+        return AppointmentService._month_bounds(reference)
+
+    @staticmethod
+    def _get_weekly_rules(doctor_id):
+        rules = query_db(
+            '''SELECT id, doctor_id, weekday, start_time, end_time,
+                      slot_duration_minutes, active
+               FROM doctor_availability_rules
+               WHERE doctor_id = ? AND active = 1
+               ORDER BY weekday, start_time''',
+            (doctor_id,)
+        )
+        return [dict(rule) for rule in rules]
+
+    @staticmethod
+    def _generate_month_slots(doctor_id, month_start, month_end):
+        rules = AppointmentService._get_weekly_rules(doctor_id)
+        if not rules:
+            return 0
+
+        execute_db(
+            '''DELETE FROM slots
+               WHERE doctor_id = ?
+                 AND slot_date BETWEEN ? AND ?
+                 AND is_booked = 0''',
+            (doctor_id, month_start.strftime('%Y-%m-%d'), month_end.strftime('%Y-%m-%d'))
+        )
+
+        inserted = 0
+        current_day = month_start
+        while current_day <= month_end:
+            weekday = current_day.weekday()
+            day_rules = [rule for rule in rules if rule['weekday'] == weekday]
+
+            for rule in day_rules:
+                start_time = AppointmentService._parse_time(rule['start_time'])
+                end_time = AppointmentService._parse_time(rule['end_time'])
+                slot_duration = int(rule['slot_duration_minutes'] or 30)
+
+                slot_cursor = datetime.combine(current_day.date(), start_time)
+                slot_end_boundary = datetime.combine(current_day.date(), end_time)
+
+                while slot_cursor + timedelta(minutes=slot_duration) <= slot_end_boundary:
+                    slot_end = slot_cursor + timedelta(minutes=slot_duration)
+                    execute_db(
+                        '''INSERT OR IGNORE INTO slots
+                           (doctor_id, slot_date, start_time, end_time, is_booked)
+                           VALUES (?, ?, ?, ?, 0)''',
+                        (
+                            doctor_id,
+                            current_day.strftime('%Y-%m-%d'),
+                            slot_cursor.strftime('%H:%M'),
+                            slot_end.strftime('%H:%M')
+                        )
+                    )
+                    inserted += 1
+                    slot_cursor = slot_end
+
+            current_day += timedelta(days=1)
+
+        return inserted
+
+    @staticmethod
+    def ensure_month_slots(doctor_id, reference_date):
+        if isinstance(reference_date, str):
+            reference_date = AppointmentService._parse_date(reference_date)
+
+        month_start, month_end = AppointmentService._month_bounds(reference_date)
+        AppointmentService._generate_month_slots(doctor_id, month_start, month_end)
+        return month_start, month_end
+
+    @staticmethod
+    def get_weekly_availability(doctor_id):
+        return AppointmentService._get_weekly_rules(doctor_id)
+
+    @staticmethod
+    def save_weekly_availability(doctor_id, weekly_availability, slot_duration_minutes=30):
+        if not isinstance(weekly_availability, list):
+            return None, 'Weekly availability must be a list'
+
+        execute_db('DELETE FROM doctor_availability_rules WHERE doctor_id = ?', (doctor_id,))
+
+        saved_rules = []
+        for rule in weekly_availability:
+            try:
+                weekday = int(rule['weekday'])
+                start_time = rule['start_time']
+                end_time = rule['end_time']
+            except (KeyError, TypeError, ValueError):
+                return None, 'Invalid weekly availability payload'
+
+            if weekday < 0 or weekday > 6:
+                return None, 'Weekday must be between 0 and 6'
+            if start_time >= end_time:
+                return None, 'Start time must be earlier than end time'
+
+            rule_duration = int(rule.get('slot_duration_minutes', slot_duration_minutes) or slot_duration_minutes)
+            rule_id = execute_db(
+                '''INSERT INTO doctor_availability_rules
+                   (doctor_id, weekday, start_time, end_time, slot_duration_minutes, active)
+                   VALUES (?, ?, ?, ?, ?, 1)''',
+                (doctor_id, weekday, start_time, end_time, rule_duration)
+            )
+            saved_rules.append({
+                'id': rule_id,
+                'doctor_id': doctor_id,
+                'weekday': weekday,
+                'weekday_name': AppointmentService.WEEKDAY_MAP.get(weekday, str(weekday)),
+                'start_time': start_time,
+                'end_time': end_time,
+                'slot_duration_minutes': rule_duration,
+                'active': 1,
+            })
+
+        AppointmentService.ensure_month_slots(doctor_id, datetime.now())
+        return saved_rules, None
 
     # ─── Slot Management ─────────────────────────────────────
 
@@ -94,18 +241,46 @@ class AppointmentService:
     @staticmethod
     def get_doctor_slots(doctor_id, date=None, available_only=False):
         """Get slots for a doctor."""
+        if date:
+            reference_date = AppointmentService._parse_date(date)
+        else:
+            reference_date = datetime.now()
+
+        month_start, month_end = AppointmentService._month_bounds(reference_date)
+        AppointmentService._generate_month_slots(doctor_id, month_start, month_end)
+
         query = 'SELECT * FROM slots WHERE doctor_id = ?'
         params = [doctor_id]
 
         if date:
             query += ' AND slot_date = ?'
             params.append(date)
-        
+        else:
+            query += ' AND slot_date BETWEEN ? AND ?'
+            params.extend([month_start.strftime('%Y-%m-%d'), month_end.strftime('%Y-%m-%d')])
+
         if available_only:
             query += ' AND is_booked = 0'
         
         query += ' ORDER BY slot_date, start_time'
         
+        slots = query_db(query, tuple(params))
+        return [dict(s) for s in slots]
+
+    @staticmethod
+    def get_doctor_slots_for_month(doctor_id, month_key, available_only=False):
+        """Get slots for a doctor for a specific month (YYYY-MM)."""
+        month_start, month_end = AppointmentService._month_bounds_from_key(month_key)
+        AppointmentService._generate_month_slots(doctor_id, month_start, month_end)
+
+        query = '''SELECT * FROM slots
+                   WHERE doctor_id = ? AND slot_date BETWEEN ? AND ?'''
+        params = [doctor_id, month_start.strftime('%Y-%m-%d'), month_end.strftime('%Y-%m-%d')]
+
+        if available_only:
+            query += ' AND is_booked = 0'
+
+        query += ' ORDER BY slot_date, start_time'
         slots = query_db(query, tuple(params))
         return [dict(s) for s in slots]
 

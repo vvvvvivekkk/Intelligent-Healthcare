@@ -135,28 +135,43 @@ def seed():
 
     print(f"  Seeded {len(mappings)} disease mappings")
 
-    # Seed sample slots for doctors (next 7 days)
-    print("Seeding availability slots...")
-    from datetime import datetime, timedelta
+    # Seed recurring weekly availability and generate the current month of slots.
+    print("Seeding recurring weekly availability...")
+    from datetime import datetime
+    from backend.services.appointment_service import AppointmentService
 
-    slot_count = 0
     doctor_ids = query_db('SELECT id FROM doctors')
+    slot_count = 0
+    default_weekly_availability = [
+        {'weekday': 0, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 0, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 1, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 1, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 2, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 2, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 3, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 3, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 4, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 4, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 5, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 5, 'start_time': '14:00', 'end_time': '17:00'},
+        {'weekday': 6, 'start_time': '09:00', 'end_time': '12:00'},
+        {'weekday': 6, 'start_time': '14:00', 'end_time': '17:00'},
+    ]
 
     for doc in doctor_ids:
-        for day_offset in range(1, 8):
-            date = (datetime.now() + timedelta(days=day_offset)).strftime('%Y-%m-%d')
-            time_slots = [
-                ('09:00', '09:30'), ('09:30', '10:00'), ('10:00', '10:30'),
-                ('10:30', '11:00'), ('11:00', '11:30'), ('11:30', '12:00'),
-                ('14:00', '14:30'), ('14:30', '15:00'), ('15:00', '15:30'),
-                ('15:30', '16:00'), ('16:00', '16:30'), ('16:30', '17:00'),
-            ]
-            for start, end in time_slots:
-                execute_db(
-                    'INSERT INTO slots (doctor_id, slot_date, start_time, end_time, is_booked) VALUES (?, ?, ?, ?, 0)',
-                    (doc['id'], date, start, end)
-                )
-                slot_count += 1
+        rules, err = AppointmentService.save_weekly_availability(doc['id'], default_weekly_availability, 30)
+        if err:
+            raise RuntimeError(err)
+
+        month_start, month_end = AppointmentService._month_bounds(datetime.now())
+        month_slots = query_db(
+            '''SELECT COUNT(*) as c FROM slots
+               WHERE doctor_id = ? AND slot_date BETWEEN ? AND ?''',
+            (doc['id'], month_start.strftime('%Y-%m-%d'), month_end.strftime('%Y-%m-%d')),
+            one=True
+        )
+        slot_count += month_slots['c'] if month_slots else 0
 
     print(f"  Seeded {slot_count} availability slots")
 

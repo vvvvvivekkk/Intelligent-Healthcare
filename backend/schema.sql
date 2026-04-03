@@ -68,6 +68,23 @@ CREATE TABLE IF NOT EXISTS slots (
     UNIQUE(doctor_id, slot_date, start_time)
 );
 
+-- Weekly availability rules for recurring schedule generation
+CREATE TABLE IF NOT EXISTS doctor_availability_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doctor_id INTEGER NOT NULL,
+    weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    slot_duration_minutes INTEGER DEFAULT 30,
+    active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+    UNIQUE(doctor_id, weekday, start_time)
+);
+CREATE INDEX IF NOT EXISTS idx_doctor_availability_rules_doctor_weekday
+    ON doctor_availability_rules(doctor_id, weekday);
+
 -- Appointments table
 CREATE TABLE IF NOT EXISTS appointments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

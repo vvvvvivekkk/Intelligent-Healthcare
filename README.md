@@ -13,7 +13,7 @@ A full-stack AI-powered healthcare platform with symptom analysis, doctor recomm
 
 - 🤖 AI chatbot for symptom analysis & doctor recommendations
 - 👨‍⚕️ Doctor search by name, specialization, or disease
-- 📅 Appointment booking with time slot management
+- 📅 Appointment booking with recurring weekly availability and monthly slot generation
 - 📧 **Patient registration with OTP email verification** (verify email before account creation)
 - 🔒 **Consultation OTP** – Generated at booking; patients view and share with doctor to complete the visit
 - 🚨 Emergency cancellation & rescheduling
@@ -56,7 +56,7 @@ Use a [Gmail App Password](https://support.google.com/accounts/answer/185833) (G
 python seed_data.py
 ```
 
-This creates the SQLite database with schema, 12 doctors, 46 disease mappings, and a test patient account.
+This creates the SQLite database with schema, 12 doctors, recurring weekly availability, generated monthly slots, 46 disease mappings, and a test patient account.
 
 ### 4. Run the Application
 
@@ -73,6 +73,8 @@ If you have an existing database from before the OTP registration flow, run once
 ```bash
 python debug/update_db_schema.py
 ```
+
+If you already have an older database, run the same migration script after pulling the latest changes. It will create the recurring availability table and backfill rules from existing slots where possible.
 
 ## Patient Registration Flow (OTP Verification)
 
@@ -228,8 +230,11 @@ healthcare/
 
 ### Appointments (`/api/appointments`)
 - `POST /book` – Book appointment (consultation OTP is created automatically)
-- `POST /slots` – Create slot (doctor)
-- `GET /slots/doctor/<id>` – Get doctor slots
+- `GET /availability` – Get current doctor weekly availability
+- `PUT /availability` – Save recurring weekly availability
+- `POST /slots` – Legacy one-off slot creation
+- `GET /slots/doctor/<id>?date=YYYY-MM-DD` – Get doctor slots for a day
+- `GET /slots/doctor/<id>?month=YYYY-MM` – Get generated slots for a month
 - `GET /<id>/otp/status` – Get consultation OTP for an appointment (patient view)
 - `POST /<id>/cancel` – Cancel appointment
 - `POST /<id>/reschedule` – Reschedule

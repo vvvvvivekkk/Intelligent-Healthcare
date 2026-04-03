@@ -12,6 +12,32 @@ appointments_bp = Blueprint('appointments', __name__, url_prefix='/api/appointme
 
 # ─── Slot Management (Doctor) ────────────────────────────────
 
+@appointments_bp.route('/availability', methods=['GET'])
+@doctor_required
+def get_weekly_availability():
+    """Get the current doctor's recurring weekly availability."""
+    rules = AppointmentService.get_weekly_availability(session['doctor_id'])
+    return success_response(rules)
+
+
+@appointments_bp.route('/availability', methods=['PUT'])
+@doctor_required
+def save_weekly_availability():
+    """Save the current doctor's recurring weekly availability."""
+    data = request.get_json() or {}
+    availability = data.get('weekly_availability', [])
+    slot_duration_minutes = data.get('slot_duration_minutes', 30)
+
+    rules, err = AppointmentService.save_weekly_availability(
+        doctor_id=session['doctor_id'],
+        weekly_availability=availability,
+        slot_duration_minutes=slot_duration_minutes
+    )
+
+    if err:
+        return error_response(err)
+    return success_response(rules, 'Weekly availability saved')
+
 @appointments_bp.route('/slots', methods=['POST'])
 @doctor_required
 def add_slot():
@@ -64,9 +90,14 @@ def delete_slot(slot_id):
 @appointments_bp.route('/slots/doctor', methods=['GET'])
 @doctor_required
 def get_my_slots():
-    """Get current doctor's slots."""
+    """Get current doctor's slots for a date or month."""
     date = request.args.get('date')
-    slots = AppointmentService.get_doctor_slots(session['doctor_id'], date)
+    month = request.args.get('month')
+
+    if month:
+        slots = AppointmentService.get_doctor_slots_for_month(session['doctor_id'], month)
+    else:
+        slots = AppointmentService.get_doctor_slots(session['doctor_id'], date)
     return success_response(slots)
 
 
@@ -75,7 +106,12 @@ def get_my_slots():
 def get_doctor_slots(doctor_id):
     """Get available slots for a specific doctor."""
     date = request.args.get('date')
-    slots = AppointmentService.get_available_slots(doctor_id, date)
+    month = request.args.get('month')
+
+    if month:
+        slots = AppointmentService.get_doctor_slots_for_month(doctor_id, month, available_only=True)
+    else:
+        slots = AppointmentService.get_available_slots(doctor_id, date)
     return success_response(slots)
 
 

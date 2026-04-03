@@ -105,7 +105,7 @@
             <!-- Tabs -->
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('appointments', this)">Appointments</button>
-                <button class="tab-btn" onclick="switchTab('slots', this)">Manage Slots</button>
+                <button class="tab-btn" onclick="switchTab('slots', this)">Weekly Availability</button>
                 <button class="tab-btn" onclick="switchTab('profile', this)">Profile</button>
             </div>
 
@@ -130,11 +130,24 @@
             <div class="tab-content" id="tab-slots" style="display:none">
                 <div class="section-header"
                     style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                    <h2 style="margin:0">Manage Slots</h2>
-                    <button class="btn btn-primary btn-sm" onclick="openAddSlot()">+ Add Slot</button>
+                    <h2 style="margin:0">Weekly Availability</h2>
+                    <button class="btn btn-primary btn-sm" onclick="saveAvailability()">Save Pattern</button>
                 </div>
-                <div class="form-group" style="max-width:250px;margin-bottom:16px">
-                    <input type="date" class="form-input" id="slotDateFilter" onchange="loadSlots()">
+                <div class="card" style="margin-bottom:16px;padding:20px">
+                    <div class="form-group" style="max-width:220px;margin-bottom:16px">
+                        <label class="form-label">Slot Duration (minutes)</label>
+                        <input type="number" class="form-input" id="slotDuration" min="15" step="15" value="30">
+                    </div>
+                    <div id="weeklyAvailabilityForm" style="display:grid;gap:12px">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+                <div class="section-header"
+                    style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h3 style="margin:0">Monthly Preview</h3>
+                    <div class="form-group" style="max-width:220px;margin-bottom:0">
+                        <input type="month" class="form-input" id="slotMonthFilter" onchange="loadSlots()">
+                    </div>
                 </div>
                 <div class="slot-grid" id="slotList" style="gap:12px">
                     <div class="spinner" style="grid-column:1/-1"></div>
@@ -166,34 +179,6 @@
                         <button type="submit" class="btn btn-primary" style="width:100%">Save Changes</button>
                     </form>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Slot Modal -->
-    <div class="modal-overlay hidden" id="addSlotModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Add Time Slot</h3>
-                <button class="modal-close" onclick="closeModal('addSlotModal')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Date</label>
-                    <input type="date" class="form-input" id="slotDate" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Start Time</label>
-                    <input type="time" class="form-input" id="slotStart" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">End Time</label>
-                    <input type="time" class="form-input" id="slotEnd" required>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('addSlotModal')">Cancel</button>
-                <button class="btn btn-primary" onclick="addSlot()">Add Slot</button>
             </div>
         </div>
     </div>
@@ -233,7 +218,9 @@
         let currentUser = null;
         let allAppointments = [];
         let allSlots = [];
+        let weeklyAvailability = [];
         let verifyAptId = null;
+        const weekdayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
         document.addEventListener('DOMContentLoaded', async () => {
             currentUser = await requireAuth('doctor');
@@ -242,10 +229,7 @@
             document.getElementById('doctorMeta').textContent =
                 `${currentUser.specialization} · ${currentUser.hospital || ''} · ${currentUser.experience_years || 0} yrs experience`;
 
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate());
-            document.getElementById('slotDate').min = tomorrow.toISOString().split('T')[0];
-            document.getElementById('slotDateFilter').value = new Date().toISOString().split('T')[0];
+            document.getElementById('slotMonthFilter').value = new Date().toISOString().slice(0, 7);
 
             if (currentUser.full_name) document.getElementById('profileName').value = currentUser.full_name;
             if (currentUser.hospital) document.getElementById('profileHospital').value = currentUser.hospital;
@@ -253,6 +237,7 @@
             if (currentUser.bio) document.getElementById('profileBio').value = currentUser.bio;
 
             loadAppointments();
+            loadAvailability();
             loadSlots();
         });
 
@@ -412,15 +397,115 @@
             }
         }
 
-        // --- Slots ---
+        // --- Availability ---
+        async function loadAvailability() {
+            const formEl = document.getElementById('weeklyAvailabilityForm');
+            formEl.innerHTML = '<div class="spinner"></div>';
+
+            try {
+                const result = await API.get('/api/appointments/availability');
+                if (result.success) {
+                    weeklyAvailability = result.data || [];
+                    renderAvailabilityForm();
+                }
+            } catch (e) {
+                formEl.innerHTML = '<p style="color:var(--danger)">Failed to load weekly availability</p>';
+            }
+        }
+
+        function renderAvailabilityForm() {
+            const formEl = document.getElementById('weeklyAvailabilityForm');
+            const rulesByDay = new Map();
+
+            weeklyAvailability.forEach(rule => {
+                if (!rulesByDay.has(rule.weekday)) {
+                    rulesByDay.set(rule.weekday, rule);
+                }
+            });
+
+            formEl.innerHTML = weekdayLabels.map((label, weekday) => {
+                const rule = rulesByDay.get(weekday);
+                const enabled = !!rule;
+                const startTime = rule ? rule.start_time : '09:00';
+                const endTime = rule ? rule.end_time : '17:00';
+
+                return `
+                    <div class="card" style="padding:16px;display:grid;grid-template-columns:160px 1fr 1fr;gap:12px;align-items:end">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label" style="display:flex;align-items:center;gap:8px">
+                                <input type="checkbox" class="weekday-enabled" data-weekday="${weekday}" ${enabled ? 'checked' : ''}>
+                                ${label}
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">Start Time</label>
+                            <input type="time" class="form-input weekday-start" data-weekday="${weekday}" value="${startTime}">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">End Time</label>
+                            <input type="time" class="form-input weekday-end" data-weekday="${weekday}" value="${endTime}">
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function saveAvailability() {
+            const slotDuration = parseInt(document.getElementById('slotDuration').value, 10) || 30;
+            const availability = [];
+
+            document.querySelectorAll('.weekday-enabled').forEach(checkbox => {
+                if (!checkbox.checked) return;
+                const weekday = parseInt(checkbox.dataset.weekday, 10);
+                const start = document.querySelector(`.weekday-start[data-weekday="${weekday}"]`).value;
+                const end = document.querySelector(`.weekday-end[data-weekday="${weekday}"]`).value;
+
+                if (!start || !end) {
+                    availability.push(null);
+                    return;
+                }
+
+                availability.push({ weekday, start_time: start, end_time: end });
+            });
+
+            if (availability.includes(null)) {
+                showToast('Please fill start and end times for all enabled days', 'error');
+                return;
+            }
+
+            if (availability.length === 0) {
+                showToast('Enable at least one weekday', 'error');
+                return;
+            }
+
+            try {
+                const result = await API.put('/api/appointments/availability', {
+                    weekly_availability: availability,
+                    slot_duration_minutes: slotDuration
+                });
+
+                if (result.success) {
+                    weeklyAvailability = result.data || [];
+                    renderAvailabilityForm();
+                    showToast('Weekly availability saved', 'success');
+                    loadSlots();
+                } else {
+                    showToast(result.message || 'Failed to save availability', 'error');
+                }
+            } catch (e) {
+                showToast('Failed to save availability', 'error');
+            }
+        }
+
+        // --- Monthly preview slots ---
         async function loadSlots() {
-            const date = document.getElementById('slotDateFilter').value;
+            const month = document.getElementById('slotMonthFilter').value;
             const slotsEl = document.getElementById('slotList');
             slotsEl.innerHTML = '<div class="spinner" style="grid-column:1/-1"></div>';
 
             try {
                 let url = '/api/appointments/slots/doctor';
-                if (date) url += `?date=${date}`;
+                if (month) url += `?month=${month}`;
                 const result = await API.get(url);
                 if (result.success) {
                     allSlots = result.data;
@@ -435,68 +520,20 @@
         function renderSlots() {
             const slotsEl = document.getElementById('slotList');
             if (allSlots.length === 0) {
-                slotsEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><h3>No slots for this date</h3><p>Click "Add Slot" to create available time slots.</p></div>';
+                slotsEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><h3>No slots for this month</h3><p>Save a weekly availability pattern to generate slots automatically.</p></div>';
                 return;
             }
 
             slotsEl.innerHTML = allSlots.map(s => `
                 <div class="slot-item" style="cursor:default;padding:12px;position:relative;${s.is_booked ? 'opacity:0.6' : ''}">
+                    <div style="font-size:0.68rem;color:var(--text-light);margin-bottom:4px">${s.slot_date}</div>
                     <div class="slot-time">${s.start_time}</div>
                     <div style="font-size:0.7rem;color:var(--text-secondary)">${s.end_time}</div>
                     <div style="font-size:0.65rem;margin-top:4px;color:${s.is_booked ? 'var(--danger)' : 'var(--success)'}">
                         ${s.is_booked ? 'Booked' : 'Available'}
                     </div>
-                    ${!s.is_booked ? `<button onclick="deleteSlot(${s.id})" style="position:absolute;top:4px;right:4px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px" title="Delete slot">&times;</button>` : ''}
                 </div>
             `).join('');
-        }
-
-        function openAddSlot() {
-            document.getElementById('addSlotModal').classList.remove('hidden');
-        }
-
-        async function addSlot() {
-            const date = document.getElementById('slotDate').value;
-            const start = document.getElementById('slotStart').value;
-            const end = document.getElementById('slotEnd').value;
-
-            if (!date || !start || !end) {
-                showToast('Please fill all fields', 'error');
-                return;
-            }
-
-            try {
-                const result = await API.post('/api/appointments/slots', {
-                    slot_date: date,
-                    start_time: start,
-                    end_time: end
-                });
-                if (result.success) {
-                    closeModal('addSlotModal');
-                    showToast('Slot added successfully', 'success');
-                    document.getElementById('slotDateFilter').value = date;
-                    loadSlots();
-                } else {
-                    showToast(result.message, 'error');
-                }
-            } catch (e) {
-                showToast('Failed to add slot', 'error');
-            }
-        }
-
-        async function deleteSlot(slotId) {
-            if (!confirm('Delete this slot?')) return;
-            try {
-                const result = await API.delete(`/api/appointments/slots/${slotId}`);
-                if (result.success) {
-                    showToast('Slot deleted', 'success');
-                    loadSlots();
-                } else {
-                    showToast(result.message, 'error');
-                }
-            } catch (e) {
-                showToast('Failed to delete', 'error');
-            }
         }
 
         // --- Profile ---
